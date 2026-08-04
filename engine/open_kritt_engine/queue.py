@@ -35,8 +35,26 @@ def _output_payload(row: StepResultRow) -> dict[str, Any]:
 def _next_states(step, state: State, step_results) -> list[State]:
     if step.is_last_step:
         return []
+    rows = step_results.get(metadata_key(step.id, state), [])
+    if not rows:
+        # schema.validate_payload only allows zero step_results rows when the
+        # step legitimately returned stub=true (stub=false requires >=1
+        # result, and a genuinely failed attempt never reaches "completed").
+        # A completed non-last step with zero rows therefore means "ran, but
+        # had nothing to report" - not "nothing left to do downstream". Carry
+        # forward a single pass-through state so later depths still run
+        # instead of the scan silently completing after this step.
+        return [
+            State(
+                prev_id=state.prev_id,
+                prev_table=state.prev_table,
+                repeat_run=1,
+                context=state.context,
+                output=state.output,
+            )
+        ]
     next_states = []
-    for row in step_results.get(metadata_key(step.id, state), []):
+    for row in rows:
         output = _output_payload(row)
         next_states.append(
             State(

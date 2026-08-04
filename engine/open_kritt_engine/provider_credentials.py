@@ -8,6 +8,7 @@ from pathlib import Path
 DEFAULT_PROVIDER_CREDENTIALS_PATH = "/credentials/providers.json"
 PROVIDER_ENV_KEYS = {
     "openrouter": "OPENROUTER_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
 }
 MAX_CREDENTIAL_FILE_BYTES = 1024 * 1024
 _CREDENTIAL_WRITE_LOCK = threading.Lock()
@@ -37,6 +38,7 @@ JOB_PROVIDER_ENV_KEYS = {
     "codex": frozenset({"CODEX_API_KEY", "OPENAI_API_KEY"}),
     "claude": frozenset({"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"}),
     "openrouter": frozenset({"OPENROUTER_API_KEY"}),
+    "deepseek": frozenset({"DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"}),
 }
 JOB_HARNESS_ENV_KEYS = {
     "cursor": frozenset({"CURSOR_API_KEY", "CURSOR_AUTH_TOKEN", "CURSOR_AGENT_BIN"}),
@@ -73,6 +75,21 @@ def read_managed_provider_credentials(path: str | None = None) -> dict[str, str]
     return credentials
 
 
+def read_managed_provider_base_urls(path: str | None = None) -> dict[str, str]:
+    credential_path = Path(path or os.getenv("OPEN_KRITT_PROVIDER_CREDENTIALS_PATH", DEFAULT_PROVIDER_CREDENTIALS_PATH))
+    try:
+        if credential_path.stat().st_size > MAX_CREDENTIAL_FILE_BYTES:
+            return {}
+        payload = json.loads(credential_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    values = payload.get("baseUrls") if isinstance(payload, dict) else None
+    if not isinstance(values, dict):
+        return {}
+    value = values.get("deepseek")
+    return {"deepseek": value.strip()} if isinstance(value, str) and value.strip() else {}
+
+
 def bootstrap_managed_provider_credentials(source: Mapping[str, str], path: str) -> tuple[dict[str, str], set[str]]:
     with _CREDENTIAL_WRITE_LOCK:
         credentials, disabled = read_managed_provider_state(path)
@@ -94,6 +111,7 @@ def bootstrap_managed_provider_credentials(source: Mapping[str, str], path: str)
                     {
                         "version": 1,
                         "credentials": credentials,
+                        "baseUrls": read_managed_provider_base_urls(path),
                         "disabledEnvironmentProviders": sorted(disabled),
                     },
                     indent=2,
@@ -115,10 +133,13 @@ def provider_environment(source: Mapping[str, str] | None = None) -> dict[str, s
     env = dict(os.environ if source is None else source)
     credentials_path = env.get("OPEN_KRITT_PROVIDER_CREDENTIALS_PATH") or DEFAULT_PROVIDER_CREDENTIALS_PATH
     credentials, disabled = bootstrap_managed_provider_credentials(env, credentials_path)
+    base_urls = read_managed_provider_base_urls(credentials_path)
     for provider in disabled:
         env.pop(PROVIDER_ENV_KEYS[provider], None)
     for provider, value in credentials.items():
         env[PROVIDER_ENV_KEYS[provider]] = value
+    if base_urls.get("deepseek"):
+        env["DEEPSEEK_BASE_URL"] = base_urls["deepseek"]
     if not env.get("CODEX_API_KEY") and env.get("OPENAI_API_KEY"):
         env["CODEX_API_KEY"] = env["OPENAI_API_KEY"]
     return env

@@ -1,4 +1,4 @@
-export const MODEL_PROVIDER_IDS = ['codex', 'claude', 'openrouter'];
+export const MODEL_PROVIDER_IDS = ['codex', 'claude', 'openrouter', 'deepseek'];
 export const MODEL_CATALOG_STATUSES = ['ready', 'loading', 'unavailable'];
 const SAFE_MODEL_NOTE_URLS = new Set(['https://chatgpt.com/cyber']);
 
@@ -8,18 +8,35 @@ const PROVIDER_HARNESSES = {
   // Claude Code has first-class OpenRouter support. Codex remains available
   // for advanced installations with a matching Codex provider configuration.
   openrouter: ['claude-code', 'codex'],
+  // DeepSeek is driven entirely through the Claude Code harness, using
+  // DeepSeek's Anthropic-compatible endpoint (ANTHROPIC_BASE_URL /
+  // ANTHROPIC_AUTH_TOKEN pointed at DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY).
+  // There is no Codex-side DeepSeek wiring.
+  deepseek: ['claude-code'],
 };
 
 const PROVIDER_DEFAULT_MODELS = {
   codex: 'gpt-5-codex',
   claude: 'claude-sonnet-5',
   openrouter: 'z-ai/glm-5.2',
+  deepseek: 'deepseek-v4-pro[1m]',
+};
+
+// The engine's live model-catalog refresh (model_catalog.py) only fetches
+// codex/claude/openrouter today, so deepseek never gets a live catalog.
+// Seed a static suggestion so the model field isn't pure free-text entry.
+const STATIC_MODEL_SUGGESTIONS = {
+  deepseek: [
+    { id: 'deepseek-v4-pro[1m]', label: 'deepseek-v4-pro[1m] (claude-code harness)', isDefault: true },
+    { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash (claude-code harness, lighter tier)' },
+  ],
 };
 
 const PROVIDER_THINKING_EFFORTS = {
   codex: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
   openrouter: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  deepseek: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
 };
 
 const HARNESS_THINKING_EFFORTS = {
@@ -103,13 +120,15 @@ export function modelCatalogForProvider(catalog, provider) {
 }
 
 export function modelsForModelProvider(catalog, provider) {
-  return modelCatalogForProvider(catalog, provider)?.models || [];
+  const models = modelCatalogForProvider(catalog, provider)?.models || [];
+  if (models.length > 0) return models;
+  return STATIC_MODEL_SUGGESTIONS[normalizedProviderId(provider)] || [];
 }
 
 export function usesFreeTextModelInput(catalog, provider) {
   const normalizedProvider = normalizedProviderId(provider);
   const providerCatalog = modelCatalogForProvider(catalog, normalizedProvider);
-  return providerCatalog?.input === 'text' || (!providerCatalog && normalizedProvider === 'openrouter');
+  return providerCatalog?.input === 'text' || (!providerCatalog && ['openrouter', 'deepseek'].includes(normalizedProvider));
 }
 
 export function modelCatalogIsReady(catalog, provider) {
@@ -131,7 +150,9 @@ export function isModelSelectionValid(model, catalog, provider) {
 }
 
 function defaultCatalogModel(catalog, provider) {
-  return modelCatalogForProvider(catalog, provider)?.defaultModel || '';
+  const liveDefault = modelCatalogForProvider(catalog, provider)?.defaultModel;
+  if (liveDefault) return liveDefault;
+  return STATIC_MODEL_SUGGESTIONS[normalizedProviderId(provider)]?.[0]?.id || '';
 }
 
 // A provider switch chooses the destination catalog default. OpenRouter keeps

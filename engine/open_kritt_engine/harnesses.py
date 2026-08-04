@@ -160,6 +160,9 @@ TOOL_FREE_CODEX_DISABLED_FEATURES = (
 OPENROUTER_CLAUDE_BASE_URL = "https://openrouter.ai/api"
 OPENROUTER_CURSOR_BASE_URL = "https://openrouter.ai/api/v1/cursor"
 OPENROUTER_CODEX_BASE_URL = "https://openrouter.ai/api/v1"
+DEEPSEEK_CLAUDE_BASE_URL = "https://api.deepseek.com/anthropic"
+DEEPSEEK_REASONING_MODEL = "deepseek-v4-pro[1m]"
+DEEPSEEK_LIGHT_MODEL = "deepseek-v4-flash"
 OPENROUTER_MODEL_ALIASES = {
     "glm-5.2": "z-ai/glm-5.2",
     "grok-4.5": "x-ai/grok-4.5",
@@ -169,7 +172,7 @@ CLAUDE_MODEL_ALIASES = {
     "opus-4.8": "claude-opus-4-8",
 }
 DEFAULT_MODEL_PROVIDER = "openrouter"
-MODEL_PROVIDERS = {"codex", "claude", "openrouter"}
+MODEL_PROVIDERS = {"codex", "claude", "openrouter", "deepseek"}
 CLAUDE_WORKSPACE_SYSTEM_PROMPT = (
     "Use only files under the current working directory and dependency paths listed in WORKSPACE.json. "
     "Do not search from filesystem root (/), /data, /root, /home, or other global paths. "
@@ -294,7 +297,23 @@ def _prepare_docker_sandbox(cmd: list[str]):
     if not network or not network.startswith(SCAN_SANDBOX_NETWORK_PREFIX):
         raise HarnessError("Scan runner must use a dedicated per-job Docker network.", code="configuration_error")
     create = _docker_control_run(
-        [cmd[0], "network", "create", "--label", "open-kritt.scan-sandbox=1", network],
+        [
+            cmd[0],
+            "network",
+            "create",
+            "--label",
+            "open-kritt.scan-sandbox=1",
+            # Docker Desktop's default bridge MTU (65535) doesn't match the
+            # host's real physical interface MTU (typically 1500). Job
+            # containers inherit the default unless told otherwise, and large
+            # HTTPS downloads (npm/yarn tarballs, solc compiler binaries) get
+            # corrupted in transit - openssl reports "decryption failed or
+            # bad record mac". Pin the per-job network to 1500 to match the
+            # host path and avoid that class of failure.
+            "--opt",
+            "com.docker.network.driver.mtu=1500",
+            network,
+        ],
     )
     if create.returncode != 0:
         raise HarnessError("Could not create the scan network.", code="start_failed")
@@ -481,6 +500,16 @@ def _classify_harness_output(output: str, *, provider: str | None = None) -> str
         return "subagent_limited"
     if account_limit_signal:
         return "account_quota_limited"
+    # DeepSeek (and providers with similar wording) return HTTP 402 with an
+    # unambiguous "no funds" message rather than the vaguer "quota"/"credits"
+    # phrasing below - route it straight to quota_exceeded (non-retryable) and
+    # skip the openrouter/deepseek quota->rate_limited downgrade further down,
+    # since a real empty balance is never a transient rate limit.
+    insufficient_balance_signal = _has_http_status(normalized, 402) or any(
+        value in normalized for value in ("insufficient balance", "insufficient_balance")
+    )
+    if insufficient_balance_signal:
+        return "quota_exceeded"
     rate_limit_signal = any(
         value in normalized
         for value in (
@@ -504,7 +533,7 @@ def _classify_harness_output(output: str, *, provider: str | None = None) -> str
             "quota temporarily exceeded",
         )
     )
-    if rate_limit_signal or _has_http_status(normalized, 429) or (provider == "openrouter" and quota_signal):
+    if rate_limit_signal or _has_http_status(normalized, 429) or (provider in {"openrouter", "deepseek"} and quota_signal):
         return "rate_limited"
     if quota_signal:
         return "quota_exceeded"
@@ -582,6 +611,13 @@ def _safe_harness_public_message(output: str, code: str) -> str:
         return (
             "The model provider hostname could not be resolved (DNS lookup failed). "
             "Check the engine's network and DNS connectivity, then resume the scan."
+        )
+    if code == "quota_exceeded" and (
+        "402" in normalized and any(value in normalized for value in ("insufficient balance", "insufficient_balance"))
+    ):
+        return (
+            "The model provider account has insufficient balance (HTTP 402). "
+            "Add funds to the provider account, then resume the scan."
         )
     return HARNESS_FAILURE_MESSAGES.get(code, HARNESS_FAILURE_MESSAGES["model_process_error"])
 
@@ -830,9 +866,15 @@ def _scan_docker_command(
         "CODEX_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "CLAUDE_CODE_SUBAGENT_MODEL",
         "CODEX_MODEL_PROVIDER",
         "CLAUDE_CODE_MODEL_PROVIDER",
         "CURSOR_API_KEY",
@@ -932,6 +974,8 @@ def claude_model_provider(
     requested_provider = normalize_model_provider(model_provider)
     if requested_provider == "openrouter":
         return "openrouter"
+    if requested_provider == "deepseek":
+        return "deepseek"
     if requested_provider:
         return None
     actual_env = env or os.environ
@@ -953,7 +997,7 @@ def _claude_model_name(model: str, env: dict[str, str], model_provider: str | No
 
 def _apply_claude_host_auth_home(env: dict[str, str], provider: str | None) -> dict[str, str]:
     auth_home = env.get("ENGINE_CLAUDE_AUTH_HOME") or os.getenv("ENGINE_CLAUDE_AUTH_HOME")
-    if provider == "openrouter" or not auth_home or _env_enabled("ENGINE_CLAUDE_DOCKER_RUNNER"):
+    if provider in ("openrouter", "deepseek") or not auth_home or _env_enabled("ENGINE_CLAUDE_DOCKER_RUNNER"):
         return env
     actual_env = dict(env)
     auth_home = str(Path(auth_home).expanduser())
@@ -972,12 +1016,29 @@ def _apply_claude_host_auth_home(env: dict[str, str], provider: str | None) -> d
 
 def _claude_env(env: dict[str, str], model: str, model_provider: str | None = None) -> dict[str, str]:
     actual_env = dict(env)
-    if claude_model_provider(model, actual_env, model_provider) == "openrouter":
+    provider = claude_model_provider(model, actual_env, model_provider)
+    if provider == "openrouter":
         if not actual_env.get("OPENROUTER_API_KEY"):
             raise HarnessError("OPENROUTER_API_KEY is required when model provider is openrouter")
         actual_env["ANTHROPIC_BASE_URL"] = actual_env.get("ANTHROPIC_BASE_URL") or OPENROUTER_CLAUDE_BASE_URL
         actual_env["ANTHROPIC_AUTH_TOKEN"] = actual_env.get("ANTHROPIC_AUTH_TOKEN") or actual_env["OPENROUTER_API_KEY"]
         actual_env["ANTHROPIC_API_KEY"] = ""
+    elif provider == "deepseek":
+        if not actual_env.get("DEEPSEEK_API_KEY"):
+            raise HarnessError("DEEPSEEK_API_KEY is required when model provider is deepseek")
+        base_url = (actual_env.get("DEEPSEEK_BASE_URL") or "").strip() or DEEPSEEK_CLAUDE_BASE_URL
+        actual_env["ANTHROPIC_BASE_URL"] = base_url
+        actual_env["ANTHROPIC_AUTH_TOKEN"] = actual_env["DEEPSEEK_API_KEY"]
+        actual_env["ANTHROPIC_API_KEY"] = ""
+        # The main turn's model is already selected explicitly via the --model
+        # CLI flag below (per-depth, from the scan's own model field) - these
+        # only cover Claude Code's INTERNAL alias resolution for any subagent
+        # it spawns on its own during the turn, so those calls also land on
+        # DeepSeek instead of a real Anthropic model name.
+        actual_env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = DEEPSEEK_REASONING_MODEL
+        actual_env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = DEEPSEEK_REASONING_MODEL
+        actual_env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = DEEPSEEK_LIGHT_MODEL
+        actual_env["CLAUDE_CODE_SUBAGENT_MODEL"] = DEEPSEEK_LIGHT_MODEL
     return actual_env
 
 
@@ -1545,7 +1606,11 @@ class CodexHarness:
                     harness="codex",
                     default_code="invalid_output",
                     output_artifact=process_output,
-                    provider="openrouter" if normalize_model_provider(self.model_provider) == "openrouter" else None,
+                    provider=(
+                        normalize_model_provider(self.model_provider)
+                        if normalize_model_provider(self.model_provider) == "openrouter"
+                        else None
+                    ),
                 ) from payload_error
             return HarnessResult(payload=parsed_payload, usage=usage, codex_session_id=thread_id, output=process_output)
 
@@ -1624,7 +1689,11 @@ class CodexHarness:
                 harness="codex",
                 default_code="invalid_output",
                 output_artifact=process_output,
-                provider="openrouter" if normalize_model_provider(self.model_provider) == "openrouter" else None,
+                provider=(
+                    normalize_model_provider(self.model_provider)
+                    if normalize_model_provider(self.model_provider) == "openrouter"
+                    else None
+                ),
             ) from payload_error
         return HarnessResult(
             payload=parsed_payload, usage=usage, codex_session_id=thread_id or session_id, output=process_output

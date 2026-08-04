@@ -8,6 +8,7 @@ import { usePagination } from '../lib/usePagination.js';
 
 const PROVIDER_LINKS = {
   openrouter: 'https://openrouter.ai/settings/keys',
+  deepseek: 'https://platform.deepseek.com/api_keys',
 };
 
 const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
@@ -94,14 +95,14 @@ export default function Accounts() {
     [refreshing, load]
   );
 
-  const save = async (provider, credential) => {
-    const next = await api.saveProviderCredential(provider.id, credential);
+  const save = async (provider, credential, baseUrl) => {
+    const next = await api.saveProviderCredential(provider.id, credential, baseUrl);
     setData(next);
     setEditing(null);
   };
 
   const remove = async (provider) => {
-    if (!window.confirm('Remove the OpenRouter API key from open·kritt?')) return;
+    if (!window.confirm(`Remove the ${provider.label} API key from open·kritt?`)) return;
     const previous = data;
     setData(removeProviderFromOverview(data, provider.id));
     try {
@@ -168,8 +169,8 @@ export default function Accounts() {
         <div>
           <div style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.02em' }}>Accounts</div>
           <div style={{ color: 'var(--text-2)', marginTop: 7, maxWidth: 680, lineHeight: 1.5 }}>
-            See which model providers are ready. Sign in to Codex or Claude with their official login flows, or add an
-            OpenRouter API key. Secret values are never returned by the API.
+            See which model providers are ready. Sign in to Codex or Claude, or add an OpenRouter or DeepSeek API
+            key. Secret values are never returned by the API.
           </div>
         </div>
         {data && (
@@ -351,7 +352,7 @@ function ProviderCard({
 }
 
 export function providerActionLabel(provider) {
-  if (provider.management !== 'login') return provider.configured ? 'Add or replace key' : 'Add OpenRouter key';
+  if (provider.management !== 'login') return provider.configured ? 'Add or replace key' : `Add ${provider.label} key`;
   const signInRequired = provider.accounts.some((account) => account.statusKind === 'expired');
   if (provider.id === 'codex') return signInRequired ? 'Sign in to Codex again' : 'Add Codex account';
   if (signInRequired) return 'Sign in to Claude again';
@@ -420,7 +421,7 @@ export function removeProviderFromOverview(overview, providerId) {
 }
 
 function ProviderMark({ provider }) {
-  const label = provider === 'codex' ? 'CX' : provider === 'claude' ? 'CL' : 'OR';
+  const label = provider === 'codex' ? 'CX' : provider === 'claude' ? 'CL' : provider === 'deepseek' ? 'DS' : 'OR';
   return <span className={`mono account-provider-mark account-provider-mark-${provider}`}>{label}</span>;
 }
 
@@ -946,6 +947,7 @@ function loginStatusLabel(status) {
 function CredentialDialog({ provider, onClose, onSave }) {
   const inputRef = useRef(null);
   const [credential, setCredential] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://api.deepseek.com/anthropic');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -965,7 +967,7 @@ function CredentialDialog({ provider, onClose, onSave }) {
     setSaving(true);
     setError(null);
     try {
-      await onSave(provider, credential);
+      await onSave(provider, credential, provider.id === 'deepseek' ? baseUrl : undefined);
       setCredential('');
     } catch (nextError) {
       setError(nextError.errors?.[0]?.message || nextError.message || 'Could not save the credential.');
@@ -1010,6 +1012,23 @@ function CredentialDialog({ provider, onClose, onSave }) {
           placeholder="Paste key"
           className="account-credential-input mono"
         />
+        {provider.id === 'deepseek' && (
+          <>
+            <label htmlFor="provider-base-url" style={{ display: 'block', fontWeight: 500, fontSize: 13, marginTop: 16 }}>
+              Anthropic-compatible base URL <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>· optional</span>
+            </label>
+            <input
+              id="provider-base-url"
+              type="url"
+              autoComplete="url"
+              spellCheck="false"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder="https://api.deepseek.com/anthropic"
+              className="account-credential-input mono"
+            />
+          </>
+        )}
         <div style={{ color: 'var(--text-2)', fontSize: 11.5, lineHeight: 1.5, marginTop: 8 }}>
           Stored locally with restricted file permissions. The value is sent once and is never displayed again.
         </div>

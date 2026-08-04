@@ -384,16 +384,25 @@ function statusDetails(status) {
     ),
   ];
   details.push(
-    ...ENVIRONMENT_ITEMS.slice(0, 4).map((item) => {
+    ...ENVIRONMENT_ITEMS.slice(0, 5).map((item) => {
       const present =
         status.valuesPresent[item.key] ||
-        (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter'));
+        (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter')) ||
+        (item.key === 'DEEPSEEK_API_KEY' && status.managedProviders.includes('deepseek'));
       return modelAccessDetail(`${present ? '✓' : '○'} ${item.label} ${present ? 'present' : 'not set'}`, present);
     })
   );
   details.push(
     ...(status.managedProviders || []).map((provider) => ({
-      text: `✓ ${provider === 'codex' ? 'Codex' : provider === 'claude' ? 'Anthropic' : 'OpenRouter'} API key present (managed from Accounts)`,
+      text: `✓ ${
+        provider === 'codex'
+          ? 'Codex'
+          : provider === 'claude'
+            ? 'Anthropic'
+            : provider === 'deepseek'
+              ? 'DeepSeek'
+              : 'OpenRouter'
+      } API key present (managed from Accounts)`,
       tone: 'success',
     }))
   );
@@ -690,12 +699,13 @@ async function runSetupScreen(terminal, context) {
           label: 'Claude login',
           description: status.claudeLoginPresent ? 'present' : 'sign in with a Claude subscription',
         },
-        ...ENVIRONMENT_ITEMS.slice(0, 4).map((item) => ({
+        ...ENVIRONMENT_ITEMS.slice(0, 5).map((item) => ({
           id: item.key,
           label: item.label,
           description:
             status.valuesPresent[item.key] ||
-            (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter'))
+            (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter')) ||
+            (item.key === 'DEEPSEEK_API_KEY' && status.managedProviders.includes('deepseek'))
               ? 'present'
               : 'not set',
         })),

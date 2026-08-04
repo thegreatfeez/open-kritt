@@ -218,6 +218,8 @@ def test_scan_sandbox_creates_internet_enabled_per_job_network(monkeypatch):
         "create",
         "--label",
         "open-kritt.scan-sandbox=1",
+        "--opt",
+        "com.docker.network.driver.mtu=1500",
         "open-kritt-scan-test-network",
     ]
     assert ["docker", "network", "rm", "open-kritt-scan-test-network"] in calls

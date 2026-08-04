@@ -114,8 +114,8 @@ export const api = {
     request(`/accounts/provider/${encodeURIComponent(provider)}${refresh ? '?refresh=1' : ''}`, {
       cache: 'no-store',
     }),
-  saveProviderCredential: (provider, credential) =>
-    request(`/accounts/${provider}`, { method: 'POST', body: { credential } }),
+  saveProviderCredential: (provider, credential, baseUrl) =>
+    request(`/accounts/${provider}`, { method: 'POST', body: { credential, ...(baseUrl ? { baseUrl } : {}) } }),
   removeProviderCredential: (provider) => request(`/accounts/${provider}`, { method: 'DELETE' }),
   removeProviderAccount: (provider, accountId) =>
     request(`/accounts/${encodeURIComponent(provider)}/account/${encodeURIComponent(accountId)}`, {

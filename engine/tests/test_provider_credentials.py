@@ -127,3 +127,31 @@ def test_job_environment_only_includes_selected_provider_and_harness_credentials
     for env in (codex, openrouter_claude, openrouter_cursor):
         assert "DATABASE_URL" not in env
         assert "GITHUB_TOKEN" not in env
+
+
+def test_deepseek_job_environment_includes_only_its_key_and_base_url(tmp_path):
+    credential_path = tmp_path / "providers.json"
+    credential_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "credentials": {"deepseek": "deepseek-secret"},
+                "baseUrls": {"deepseek": "https://api.deepseek.com/anthropic"},
+                "disabledEnvironmentProviders": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    source = {
+        "PATH": "/bin",
+        "OPEN_KRITT_PROVIDER_CREDENTIALS_PATH": str(credential_path),
+        "OPENROUTER_API_KEY": "other-secret",
+    }
+
+    env = job_environment("deepseek", "claude-code", source)
+
+    assert env == {
+        "PATH": "/bin",
+        "DEEPSEEK_API_KEY": "deepseek-secret",
+        "DEEPSEEK_BASE_URL": "https://api.deepseek.com/anthropic",
+    }

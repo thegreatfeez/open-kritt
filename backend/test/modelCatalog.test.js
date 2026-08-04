@@ -80,7 +80,7 @@ test('model catalog helpers sanitize cached models and report input readiness', 
   ]);
   assert.deepEqual(
     buildModelCatalogResponse(
-      ['codex', 'claude', 'openrouter'],
+      ['codex', 'claude', 'openrouter', 'deepseek'],
       [codexCatalog, { provider: 'claude', models: [], lastError: 'upstream unavailable' }]
     ),
     {
@@ -154,6 +154,7 @@ test('model catalog helpers sanitize cached models and report input readiness', 
           status: 'ready',
         },
         { provider: 'openrouter', input: 'text', models: [], defaultModel: null, status: 'loading' },
+        { provider: 'deepseek', input: 'text', models: [], defaultModel: null, status: 'loading' },
       ],
     }
   );

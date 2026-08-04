@@ -6,10 +6,17 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
-export const PROVIDER_KEYS = ['CODEX_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY'];
+export const PROVIDER_KEYS = [
+  'CODEX_API_KEY',
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENROUTER_API_KEY',
+  'DEEPSEEK_API_KEY',
+];
 export const CODEX_LOGIN_STATUS_KEY = 'CODEX_LOGIN_CONFIGURED';
 const MANAGED_PROVIDER_LABELS = {
   openrouter: 'OpenRouter API key',
+  deepseek: 'DeepSeek API key',
 };
 const CODEX_LOGIN_CONTAINER_USER_HOME = '/open-kritt-login';
 const CODEX_LOGIN_CONTAINER_HOME = `${CODEX_LOGIN_CONTAINER_USER_HOME}/.codex`;
@@ -36,6 +43,11 @@ export const ENVIRONMENT_ITEMS = [
     key: 'OPENROUTER_API_KEY',
     label: 'OpenRouter API key',
     info: 'Used for supported OpenRouter-compatible model and harness selections.',
+  },
+  {
+    key: 'DEEPSEEK_API_KEY',
+    label: 'DeepSeek API key',
+    info: 'Used for Claude Code harness scans through DeepSeek\'s Anthropic-compatible endpoint. Set DEEPSEEK_BASE_URL in .env to override the endpoint (defaults to https://api.deepseek.com/anthropic).',
   },
   {
     key: 'GITHUB_TOKEN',
@@ -668,7 +680,7 @@ function renderStatus(status, io) {
     io,
     `${status.claudeLoginPresent ? '✓' : '○'} Claude login ${status.claudeLoginPresent ? 'present' : 'not set'}`
   );
-  for (const item of ENVIRONMENT_ITEMS.slice(0, 4)) {
+  for (const item of ENVIRONMENT_ITEMS.slice(0, 5)) {
     const present = status.valuesPresent[item.key];
     write(io, `${present ? '✓' : '○'} ${item.label} ${present ? 'present' : 'not set'}`);
   }
@@ -786,17 +798,19 @@ async function manageEnvironmentItem(context, item) {
       write(io, 'Nothing changed.');
       return;
     }
-    if (item.key === 'OPENROUTER_API_KEY') {
+    if (item.key === 'OPENROUTER_API_KEY' || item.key === 'DEEPSEEK_API_KEY') {
       const status = await getSetupStatus(context);
-      await saveManagedProviderCredential(status.credentialsPath, 'openrouter', value);
+      const provider = item.key === 'OPENROUTER_API_KEY' ? 'openrouter' : 'deepseek';
+      await saveManagedProviderCredential(status.credentialsPath, provider, value);
     }
     await setEnvValue(envFile, item.key, value);
     write(io, `${item.label} saved.`);
   } else if (action === '2') {
     if (await prompter.confirm(`Unset ${item.label}?`)) {
-      if (item.key === 'OPENROUTER_API_KEY') {
+      if (item.key === 'OPENROUTER_API_KEY' || item.key === 'DEEPSEEK_API_KEY') {
         const status = await getSetupStatus(context);
-        await disableManagedProviderCredential(status.credentialsPath, 'openrouter');
+        const provider = item.key === 'OPENROUTER_API_KEY' ? 'openrouter' : 'deepseek';
+        await disableManagedProviderCredential(status.credentialsPath, provider);
       }
       await setEnvValue(envFile, item.key, '');
       write(io, `${item.label} unset.`);
@@ -1172,11 +1186,12 @@ export async function runSetup(options = {}) {
     write(context.io, '4) OpenAI API key');
     write(context.io, '5) Anthropic API key');
     write(context.io, '6) OpenRouter API key');
-    write(context.io, '7) GitHub token');
-    write(context.io, '8) Finish setup');
+    write(context.io, '7) DeepSeek API key');
+    write(context.io, '8) GitHub token');
+    write(context.io, '9) Finish setup');
     const choice = (await context.prompter.ask('Choose an item: ')).toLowerCase();
 
-    if (choice === '8' || choice === 'q' || choice === 'quit') break;
+    if (choice === '9' || choice === 'q' || choice === 'quit') break;
     if (choice === '1') {
       await manageCodexLogin(context);
       continue;
@@ -1185,7 +1200,7 @@ export async function runSetup(options = {}) {
       await manageClaudeLogin(context);
       continue;
     }
-    const item = ENVIRONMENT_ITEMS[Number(choice) - 3] || (choice === '7' ? ENVIRONMENT_ITEMS[4] : null);
+    const item = ENVIRONMENT_ITEMS[Number(choice) - 3] || null;
     if (!item) {
       write(context.io, 'Choose a listed item.');
       continue;
