@@ -53,7 +53,6 @@ python -m open_kritt_engine                # run the worker
 
 - **Conventional Commits** for every commit: `feat:`, `fix:`, `docs:`, `refactor:`,
   `test:`, `chore:`, `ci:`. Scope optional (`feat(frontend): …`).
-- **Sign off every commit** (DCO): `git commit -s`. A CI check enforces it.
 - **Lint & format before proposing changes** (ESLint/Prettier for JS, Ruff for
   Python). Match the existing style; don't reformat unrelated code.
 - **DB changes are additive, idempotent, forward-only**: a new
@@ -91,8 +90,8 @@ python -m open_kritt_engine                # run the worker
 
 ## CI / merge flow
 
-- **CI** runs on PRs to `main` (`frontend`, `backend`, `engine`, `database`, version
-  sync, DCO). It's a required check — `main` only receives CI-passing code.
+- **CI** runs on PRs to `main` (`frontend`, `backend`, `engine`, `database`, and version
+  sync). It's a required check — `main` only receives CI-passing code.
 - **Release** runs on push to `main` via release-please (see [`RELEASE.md`](RELEASE.md)).
 - Lint/format steps are currently `continue-on-error` until a one-time cleanup PR; keep
   new code clean so they can become hard gates.

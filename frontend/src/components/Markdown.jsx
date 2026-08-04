@@ -121,8 +121,16 @@ function inline(text) {
       if (tok.startsWith('**')) out.push(<strong key={key++}>{tok.slice(2, -2)}</strong>);
       else if (tok.startsWith('[')) {
         const lm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        const href = lm[2];
+        const isSafe = /^(?:https?:\/\/|#|\/)/.test(href);
         out.push(
-          <a key={key++} href={lm[2]} target="_blank" rel="noreferrer" style={linkStyle}>
+          <a
+            key={key++}
+            href={isSafe ? href : ''}
+            target="_blank"
+            rel="noreferrer"
+            style={linkStyle}
+          >
             {lm[1]}
           </a>
         );

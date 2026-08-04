@@ -35,7 +35,7 @@ from .harnesses import (
 )
 from .model_catalog import ModelCatalogRefresher
 from .model_output_artifacts import record_model_error_output
-from .models import ModelSelection, model_selection_for_depth
+from .models import ModelSelection, model_selection_for_depth, post_processing_model_selection
 from .post_processing import PostProcessor, PostProcessRateLimited
 from .prompting import harness_prompt, native_agent_skills_prompt, render_prompt, repeat_append_prompt
 from .provider_credentials import provider_environment
@@ -1105,7 +1105,7 @@ class Worker:
                     continue
                 if not self._worker_can_pick_job(worker_id):
                     return did_work
-                harness = self._harness_for_model_selection(model_selection_for_depth(current))
+                harness = self._harness_for_model_selection(post_processing_model_selection(current))
                 did_post_work = self.post_processor.process_once(current, harness)
                 if did_post_work:
                     return True

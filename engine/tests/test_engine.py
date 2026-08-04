@@ -25,11 +25,13 @@ from open_kritt_engine.harnesses import (
 )
 from open_kritt_engine.models import (
     Job,
+    ModelSelection,
     State,
     Step,
     StepResultRow,
     Workflow,
     model_selection_for_depth,
+    post_processing_model_selection,
     post_processing_thinking_effort,
 )
 from open_kritt_engine.post_processing import (
@@ -152,6 +154,30 @@ def test_post_processing_thinking_effort_is_independent_from_workflow_effort():
     assert model_selection_for_depth(configured).thinking_effort == "high"
     assert post_processing_thinking_effort(configured) == "medium"
     assert post_processing_thinking_effort({**configured, "configuration": {}}) == "high"
+
+
+def test_post_processing_can_use_a_complete_independent_model_selection():
+    configured = {
+        **scan(
+            {
+                "post_processing_model": "gpt-5-codex",
+                "post_processing_model_provider": "codex",
+                "post_processing_harness": "codex",
+                "post_processing_thinking_effort": "xhigh",
+            }
+        ),
+        "model": "claude-sonnet",
+        "model_provider": "claude",
+        "harness": "claude-code",
+        "thinking_effort": "high",
+    }
+
+    assert post_processing_model_selection(configured) == ModelSelection(
+        model="gpt-5-codex",
+        model_provider="codex",
+        harness="codex",
+        thinking_effort="xhigh",
+    )
 
 
 def fake_cache_git_head(path):
@@ -2902,14 +2928,34 @@ def test_post_processing_harness_uses_dependency_workspace(monkeypatch, tmp_path
         def update_post_process_metadata(self, _conn, metadata_id, **kwargs):
             self.updates.append({"metadata_id": metadata_id, **kwargs})
 
-    monkeypatch.setattr(post_processing_module, "prepare_dependency_workspace", lambda **_kwargs: prepared)
+    workspace_arguments = {}
+
+    def prepare_workspace(**kwargs):
+        workspace_arguments.update(kwargs)
+        return prepared
+
+    monkeypatch.setattr(post_processing_module, "prepare_dependency_workspace", prepare_workspace)
     fake_db = FakePostDb()
     processor = PostProcessor(SimpleNamespace(retry_count=0, data_dir="/tmp", github_token=None), fake_db)
     fake_harness = FakeHarness([{"ok": True}])
+    post_scan = {
+        **scan(
+            {
+                "post_processing_model": "gpt-5-codex",
+                "post_processing_model_provider": "codex",
+                "post_processing_harness": "codex",
+                "post_processing_thinking_effort": "xhigh",
+            }
+        ),
+        "model": "claude-sonnet",
+        "model_provider": "claude",
+        "harness": "claude-code",
+        "thinking_effort": "high",
+    }
 
     payload, usage, _session, checked_out_commit = processor._run_harness_with_retries(
         metadata_id=9,
-        scan=scan(),
+        scan=post_scan,
         harness=fake_harness,
         prompt="Rank findings.",
         schema={},
@@ -2920,6 +2966,10 @@ def test_post_processing_harness_uses_dependency_workspace(monkeypatch, tmp_path
     assert usage == {"total_tokens": 3}
     assert checked_out_commit == "def"
     assert fake_harness.calls[0]["repo_dir"] == "/tmp/post-repo"
+    assert fake_harness.calls[0]["model"] == "gpt-5-codex"
+    assert fake_harness.calls[0]["thinking_effort"] == "xhigh"
+    assert workspace_arguments["harness_name"] == "codex"
+    assert workspace_arguments["model_provider"] == "codex"
     assert "Workspace context:" in fake_harness.calls[0]["prompt"]
     assert fake_db.updates[0]["prompt_filled"] == fake_harness.calls[0]["prompt"]
     assert not root.exists()
