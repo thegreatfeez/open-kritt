@@ -6,6 +6,7 @@ import {
   CLAUDE_LOGIN,
   CODEX_LOGIN,
   ENVIRONMENT_ITEMS,
+  MANAGED_PROVIDER_ENV_KEY_TO_ID,
   disableManagedProviderCredential,
   UserCancelledError,
   ensureEnvFile,
@@ -384,11 +385,9 @@ function statusDetails(status) {
     ),
   ];
   details.push(
-    ...ENVIRONMENT_ITEMS.slice(0, 5).map((item) => {
-      const present =
-        status.valuesPresent[item.key] ||
-        (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter')) ||
-        (item.key === 'DEEPSEEK_API_KEY' && status.managedProviders.includes('deepseek'));
+    ...ENVIRONMENT_ITEMS.slice(0, 6).map((item) => {
+      const managedId = MANAGED_PROVIDER_ENV_KEY_TO_ID[item.key];
+      const present = status.valuesPresent[item.key] || (managedId && status.managedProviders.includes(managedId));
       return modelAccessDetail(`${present ? '✓' : '○'} ${item.label} ${present ? 'present' : 'not set'}`, present);
     })
   );
@@ -699,16 +698,15 @@ async function runSetupScreen(terminal, context) {
           label: 'Claude login',
           description: status.claudeLoginPresent ? 'present' : 'sign in with a Claude subscription',
         },
-        ...ENVIRONMENT_ITEMS.slice(0, 5).map((item) => ({
-          id: item.key,
-          label: item.label,
-          description:
-            status.valuesPresent[item.key] ||
-            (item.key === 'OPENROUTER_API_KEY' && status.managedProviders.includes('openrouter')) ||
-            (item.key === 'DEEPSEEK_API_KEY' && status.managedProviders.includes('deepseek'))
-              ? 'present'
-              : 'not set',
-        })),
+...ENVIRONMENT_ITEMS.slice(0, 5).map((item) => {
+          const managedId = MANAGED_PROVIDER_ENV_KEY_TO_ID[item.key];
+          const present = status.valuesPresent[item.key] || (managedId && status.managedProviders.includes(managedId));
+          return {
+            id: item.key,
+            label: item.label,
+            description: present ? 'present' : 'not set',
+          };
+        }),
         {
           id: 'GITHUB_TOKEN',
           label: 'GitHub token',

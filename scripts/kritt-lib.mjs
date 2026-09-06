@@ -18,6 +18,10 @@ const MANAGED_PROVIDER_LABELS = {
   openrouter: 'OpenRouter API key',
   deepseek: 'DeepSeek API key',
 };
+export const MANAGED_PROVIDER_ENV_KEY_TO_ID = {
+  OPENROUTER_API_KEY: 'openrouter',
+  DEEPSEEK_API_KEY: 'deepseek',
+};
 const CODEX_LOGIN_CONTAINER_USER_HOME = '/open-kritt-login';
 const CODEX_LOGIN_CONTAINER_HOME = `${CODEX_LOGIN_CONTAINER_USER_HOME}/.codex`;
 const CODEX_LOGIN_CONTAINER_BOOTSTRAP =
@@ -680,7 +684,7 @@ function renderStatus(status, io) {
     io,
     `${status.claudeLoginPresent ? '✓' : '○'} Claude login ${status.claudeLoginPresent ? 'present' : 'not set'}`
   );
-  for (const item of ENVIRONMENT_ITEMS.slice(0, 5)) {
+  for (const item of ENVIRONMENT_ITEMS.slice(0, 6)) {
     const present = status.valuesPresent[item.key];
     write(io, `${present ? '✓' : '○'} ${item.label} ${present ? 'present' : 'not set'}`);
   }
@@ -798,18 +802,18 @@ async function manageEnvironmentItem(context, item) {
       write(io, 'Nothing changed.');
       return;
     }
-    if (item.key === 'OPENROUTER_API_KEY' || item.key === 'DEEPSEEK_API_KEY') {
+    if (Object.hasOwn(MANAGED_PROVIDER_ENV_KEY_TO_ID, item.key)) {
       const status = await getSetupStatus(context);
-      const provider = item.key === 'OPENROUTER_API_KEY' ? 'openrouter' : 'deepseek';
+      const provider = MANAGED_PROVIDER_ENV_KEY_TO_ID[item.key];
       await saveManagedProviderCredential(status.credentialsPath, provider, value);
     }
     await setEnvValue(envFile, item.key, value);
     write(io, `${item.label} saved.`);
   } else if (action === '2') {
     if (await prompter.confirm(`Unset ${item.label}?`)) {
-      if (item.key === 'OPENROUTER_API_KEY' || item.key === 'DEEPSEEK_API_KEY') {
+      if (Object.hasOwn(MANAGED_PROVIDER_ENV_KEY_TO_ID, item.key)) {
         const status = await getSetupStatus(context);
-        const provider = item.key === 'OPENROUTER_API_KEY' ? 'openrouter' : 'deepseek';
+        const provider = MANAGED_PROVIDER_ENV_KEY_TO_ID[item.key];
         await disableManagedProviderCredential(status.credentialsPath, provider);
       }
       await setEnvValue(envFile, item.key, '');

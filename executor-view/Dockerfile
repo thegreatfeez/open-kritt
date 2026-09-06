@@ -2,7 +2,9 @@ FROM python:3.12.7-slim-bookworm
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir psycopg[binary]==3.2.3
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir psycopg==3.2.3
 
 COPY server.py ./
 

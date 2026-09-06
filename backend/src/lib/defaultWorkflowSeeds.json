@@ -143,5 +143,66 @@
         }
       }
     ]
+  },
+  {
+    "name": "Solana Program Security Review",
+    "description": "Enumerate every instruction handler in a Solana program (Anchor or native), then investigate each for account validation, CPI, PDA, arithmetic, and access control vulnerabilities.",
+    "extra": [],
+    "levels": [
+      {
+        "depth": 0,
+        "steps": [
+          {
+            "name": "Map instruction handlers and accounts",
+            "content": "Repository: {{repo_full}} at commit {{commit_sha}}. Scope: {{repo_scope}}. Dependencies: {{dependencies}}. Configuration: {{configuration}}.\n\nYou are a whitehat security researcher mapping the attack surface of a Solana program. The Solana CLI, Anchor, and cargo tools are available in this container.\n\nFind every instruction handler defined in the program. For Anchor programs, look for #[derive(Accounts)] structs and #[instruction] annotated functions. For native programs, look for process_instruction or entrypoint functions and their instruction dispatch.\n\nFor each instruction handler:\n- Give the exact Rust function name, file path, and line number.\n- List all accounts the instruction expects, including their expected owner, writer flag, and signer requirement.\n- Identify which accounts the instruction modifies (writable) versus reads only.\n- Identify the instruction discriminator or variant identifier.\n- Note any cross-program invocation (CPI) calls the instruction makes, including the target program and accounts passed.\n- Give the external actor who can call this instruction and what input they control.\n- Exclude test files, examples, and benchmarks. Only include production-relevant instructions.\n- If the program is upgradeable, note the upgrade authority and current upgrade state.\n\nReturn one record per instruction handler. If no Solana program can be identified, return a stub explaining why."
+          }
+        ],
+        "consumeAll": false,
+        "isLastStep": false,
+        "multiOutput": true,
+        "outputTable": "workflows.step_results",
+        "outputFormat": {
+          "instruction_name": "string",
+          "instruction_file": "string",
+          "instruction_line": "number",
+          "accounts_list": "array",
+          "writable_accounts": "array",
+          "signer_requirements": "array",
+          "cpi_calls": "array",
+          "external_actor": "string",
+          "controlled_inputs": "string",
+          "upgradeable": "boolean",
+          "upgrade_authority": "string"
+        }
+      },
+      {
+        "depth": 1,
+        "steps": [
+          {
+            "name": "Investigate account validation",
+            "content": "Repository: {{repo_full}} at commit {{commit_sha}} only. Scope: {{repo_scope}}. Dependencies: {{dependencies}}. Configuration: {{configuration}}.\n\nYou are investigating one Solana instruction handler for account validation vulnerabilities.\n\nTarget instruction: {{instruction_name}} at {{instruction_file}}:{{instruction_line}}\nExpected accounts: {{accounts_list}}\nWritable accounts: {{writable_accounts}}\nSigner requirements: {{signer_requirements}}\nCPI calls: {{cpi_calls}}\nExternal actor: {{external_actor}}\nControlled inputs: {{controlled_inputs}}\n\nAnalyze the actual account validation logic for this instruction:\n1. Verify every account constraint is enforced in code, not just in documentation. Check Anchor macros, manual checks, or missing checks for each account.\n2. Check for missing signer checks: can an attacker pass someone else's account without their signature?\n3. Check for incorrect owner checks: does the code verify the expected program owns each account?\n4. Check for missing writable flags: can an attacker pass a readable-only account where a writable one is expected?\n5. Check PDA derivation: are seeds and bump verified correctly, or can a different PDA be substituted?\n6. Check for missing close authority checks: can an attacker close accounts they shouldn't?\n7. For CPI calls, verify the target program ID, accounts passed, and whether the caller correctly constrains what the callee can do.\n8. Check for reinitialization risks: can an already-initialized account be re-initialized with attacker-controlled values?\n\nReport only concrete vulnerabilities with code evidence. For each finding, specify the exact missing check, the attacker capability, and a minimal malicious input or account configuration that triggers the bug."
+          },
+          {
+            "name": "Investigate arithmetic and state logic",
+            "content": "Repository: {{repo_full}} at commit {{commit_sha}} only. Scope: {{repo_scope}}. Dependencies: {{dependencies}}. Configuration: {{configuration}}.\n\nYou are investigating one Solana instruction handler for arithmetic, state, and access control vulnerabilities.\n\nTarget instruction: {{instruction_name}} at {{instruction_file}}:{{instruction_line}}\nExpected accounts: {{accounts_list}}\nWritable accounts: {{writable_accounts}}\nSigner requirements: {{signer_requirements}}\nCPI calls: {{cpi_calls}}\nExternal actor: {{external_actor}}\nControlled inputs: {{controlled_inputs}}\n\nAnalyze the arithmetic and state logic:\n1. Check for integer overflow/underflow: does the code use checked_add, checked_sub, or saturating math, or does it use unchecked wrapping operations?\n2. Check for rounding errors: does division happen before multiplication, causing precision loss?\n3. Check token balance accounting: does the instruction correctly track SPL token balance changes after transfers or mints?\n4. Check authority checks: does the instruction verify the correct authority signed (owner, delegate, mint authority, freeze authority)?\n5. Check for missing access control: can an unauthorized user invoke privileged operations?\n6. Check for state consistency: are all state fields updated atomically, or can partial updates leave inconsistent state?\n7. Check for rent and account size: does the instruction correctly handle rent-exempt balance requirements and account resizing?\n8. Check for signer privilege escalation: can a signer with limited authority perform actions beyond their intended scope?\n\nReport only concrete vulnerabilities with code evidence. For each finding, specify the exact operation, the attacker capability, and a minimal input sequence that triggers the bug."
+          }
+        ],
+        "consumeAll": false,
+        "isLastStep": true,
+        "multiOutput": true,
+        "outputTable": "workflows.vulnerabilities",
+        "outputFormat": {
+          "line": "number",
+          "summary": "string",
+          "file_path": "string",
+          "explanation": "string",
+          "exploitable": "boolean",
+          "trigger_flow": "array",
+          "malicious_actor": "string",
+          "vulnerability_type": "string",
+          "malicious_input_example": "string"
+        }
+      }
+    ]
   }
 ]

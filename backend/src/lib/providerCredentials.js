@@ -11,6 +11,13 @@ export const PROVIDER_CREDENTIALS_PATH =
 
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com/anthropic';
 
+// Providers whose Accounts credential also carries an optional Anthropic-
+// compatible base URL, alongside the env var that holds it and the sane
+// default applied when the field is left blank.
+export const BASE_URL_PROVIDERS = {
+  deepseek: { envKey: 'DEEPSEEK_BASE_URL', defaultUrl: DEEPSEEK_DEFAULT_BASE_URL },
+};
+
 export const PROVIDER_DEFINITIONS = {
   codex: {
     label: 'Codex',
@@ -37,7 +44,8 @@ export const PROVIDER_DEFINITIONS = {
     label: 'DeepSeek',
     envKeys: ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'],
     credentialLabel: 'DeepSeek API key',
-    description: 'DeepSeek models driven through the Claude Code harness, via DeepSeek’s Anthropic-compatible endpoint.',
+    description:
+      "DeepSeek models driven through the Claude Code harness, via DeepSeek's Anthropic-compatible endpoint.",
     management: 'api_key',
   },
 };
@@ -74,7 +82,9 @@ function normalizeStore(value) {
     ? [...new Set(value.disabledEnvironmentProviders.filter((provider) => MANAGED_CREDENTIAL_PROVIDERS.has(provider)))]
     : [];
   const baseUrls = {};
-  if (hasValue(value.baseUrls?.deepseek)) baseUrls.deepseek = String(value.baseUrls.deepseek);
+  for (const provider of Object.keys(BASE_URL_PROVIDERS)) {
+    if (hasValue(value.baseUrls?.[provider])) baseUrls[provider] = String(value.baseUrls[provider]);
+  }
   return { version: 1, credentials, baseUrls, disabledEnvironmentProviders };
 }
 
@@ -130,9 +140,9 @@ export function validateProviderCredential(provider, credential) {
 }
 
 export function validateProviderBaseUrl(provider, baseUrl) {
-  if (provider !== 'deepseek') return null;
-  // Optional: DeepSeek's Anthropic-compatible endpoint has a sane default
-  // (DEEPSEEK_DEFAULT_BASE_URL) applied when the field is left blank.
+  if (!Object.hasOwn(BASE_URL_PROVIDERS, provider)) return null;
+  // Optional: this provider's Anthropic-compatible endpoint has a sane
+  // default (BASE_URL_PROVIDERS[provider].defaultUrl) applied when blank.
   if (!hasValue(baseUrl)) return null;
   try {
     const url = new URL(String(baseUrl).trim());
@@ -149,7 +159,8 @@ export async function saveManagedProviderCredential(
   { credentialsPath = PROVIDER_CREDENTIALS_PATH, environmentFilePath = PROJECT_ENV_FILE_PATH, baseUrl } = {}
 ) {
   const validationError = validateProviderCredential(provider, credential);
-  const resolvedBaseUrl = hasValue(baseUrl) ? baseUrl : (process.env.DEEPSEEK_BASE_URL ?? '');
+  const baseUrlEnvKey = BASE_URL_PROVIDERS[provider]?.envKey;
+  const resolvedBaseUrl = hasValue(baseUrl) ? baseUrl : ((baseUrlEnvKey ? process.env[baseUrlEnvKey] : '') ?? '');
   const baseUrlError = validateProviderBaseUrl(provider, resolvedBaseUrl);
   if (validationError || baseUrlError) {
     const error = new Error((validationError || baseUrlError).message);
@@ -166,8 +177,8 @@ export async function saveManagedProviderCredential(
       disabledEnvironmentProviders: [...store.disabledEnvironmentProviders],
     };
     store.credentials[provider] = credential.trim();
-    if (provider === 'deepseek' && hasValue(resolvedBaseUrl)) {
-      store.baseUrls = { ...(store.baseUrls || {}), deepseek: String(resolvedBaseUrl).trim() };
+    if (baseUrlEnvKey && hasValue(resolvedBaseUrl)) {
+      store.baseUrls = { ...(store.baseUrls || {}), [provider]: String(resolvedBaseUrl).trim() };
     }
     store.disabledEnvironmentProviders = store.disabledEnvironmentProviders.filter(
       (candidate) => candidate !== provider
@@ -177,9 +188,7 @@ export async function saveManagedProviderCredential(
       await updateEnvironmentFile(
         {
           [PROVIDER_DEFINITIONS[provider].envKeys[0]]: credential.trim(),
-          ...(provider === 'deepseek' && hasValue(resolvedBaseUrl)
-            ? { DEEPSEEK_BASE_URL: String(resolvedBaseUrl).trim() }
-            : {}),
+          ...(baseUrlEnvKey && hasValue(resolvedBaseUrl) ? { [baseUrlEnvKey]: String(resolvedBaseUrl).trim() } : {}),
         },
         { environmentFilePath }
       );
@@ -214,10 +223,11 @@ export async function removeManagedProviderCredential(
     if (disableEnvironment && !wasDisabled) store.disabledEnvironmentProviders.push(provider);
     await writeStore(credentialsPath, store);
     try {
+      const baseUrlEnvKey = BASE_URL_PROVIDERS[provider]?.envKey;
       await updateEnvironmentFile(
         {
           [PROVIDER_DEFINITIONS[provider].envKeys[0]]: '',
-          ...(provider === 'deepseek' ? { DEEPSEEK_BASE_URL: '' } : {}),
+          ...(baseUrlEnvKey ? { [baseUrlEnvKey]: '' } : {}),
         },
         { environmentFilePath }
       );
@@ -241,7 +251,7 @@ export function providerCredentialStatuses({
     const managedCredential = hasValue(managed[id]);
     const environmentCredential =
       !disabledEnvironmentProviders.has(id) &&
-      (id === 'deepseek' ? definition.envKeys.slice(0, 1) : definition.envKeys).some(
+      (Object.hasOwn(BASE_URL_PROVIDERS, id) ? definition.envKeys.slice(0, 1) : definition.envKeys).some(
         (key) => hasValue(env[key]) || hasConfiguredFlag(env[`OPEN_KRITT_${key}_CONFIGURED`])
       );
     const savedLogin = providerLoginIsConfigured(id, { env, ...loginOptions });

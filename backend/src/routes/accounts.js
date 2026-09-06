@@ -9,6 +9,7 @@ import {
   getAccountsSummary,
 } from '../lib/accounts.js';
 import {
+  BASE_URL_PROVIDERS,
   removeManagedProviderCredential,
   saveManagedProviderCredential,
   validateProviderCredential,
@@ -62,7 +63,8 @@ export function createAccountsRouter({
   router.post('/:provider', async (req, res, next) => {
     try {
       const validationError = validateProviderCredential(req.params.provider, req.body?.credential);
-      const baseUrl = req.body?.baseUrl ?? process.env.DEEPSEEK_BASE_URL;
+      const baseUrlEnvKey = BASE_URL_PROVIDERS[req.params.provider]?.envKey;
+      const baseUrl = req.body?.baseUrl ?? (baseUrlEnvKey ? process.env[baseUrlEnvKey] : undefined);
       const baseUrlError = validateProviderBaseUrl(req.params.provider, baseUrl);
       if (validationError || baseUrlError) {
         return res.status(422).json({ error: 'Validation failed.', errors: [validationError || baseUrlError] });

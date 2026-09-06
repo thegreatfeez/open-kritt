@@ -10,6 +10,11 @@ PROVIDER_ENV_KEYS = {
     "openrouter": "OPENROUTER_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
 }
+# Providers whose managed credential also carries an optional Anthropic-
+# compatible base URL, keyed to the raw env var it's exported as.
+BASE_URL_ENV_KEYS = {
+    "deepseek": "DEEPSEEK_BASE_URL",
+}
 MAX_CREDENTIAL_FILE_BYTES = 1024 * 1024
 _CREDENTIAL_WRITE_LOCK = threading.Lock()
 JOB_COMMON_ENV_KEYS = frozenset(
@@ -42,6 +47,7 @@ JOB_PROVIDER_ENV_KEYS = {
 }
 JOB_HARNESS_ENV_KEYS = {
     "cursor": frozenset({"CURSOR_API_KEY", "CURSOR_AUTH_TOKEN", "CURSOR_AGENT_BIN"}),
+    "omp": frozenset({"OMP_BIN"}),
 }
 
 
@@ -86,8 +92,12 @@ def read_managed_provider_base_urls(path: str | None = None) -> dict[str, str]:
     values = payload.get("baseUrls") if isinstance(payload, dict) else None
     if not isinstance(values, dict):
         return {}
-    value = values.get("deepseek")
-    return {"deepseek": value.strip()} if isinstance(value, str) and value.strip() else {}
+    result = {}
+    for provider in BASE_URL_ENV_KEYS:
+        value = values.get(provider)
+        if isinstance(value, str) and value.strip():
+            result[provider] = value.strip()
+    return result
 
 
 def bootstrap_managed_provider_credentials(source: Mapping[str, str], path: str) -> tuple[dict[str, str], set[str]]:
@@ -138,8 +148,9 @@ def provider_environment(source: Mapping[str, str] | None = None) -> dict[str, s
         env.pop(PROVIDER_ENV_KEYS[provider], None)
     for provider, value in credentials.items():
         env[PROVIDER_ENV_KEYS[provider]] = value
-    if base_urls.get("deepseek"):
-        env["DEEPSEEK_BASE_URL"] = base_urls["deepseek"]
+    for provider, env_key in BASE_URL_ENV_KEYS.items():
+        if base_urls.get(provider):
+            env[env_key] = base_urls[provider]
     if not env.get("CODEX_API_KEY") and env.get("OPENAI_API_KEY"):
         env["CODEX_API_KEY"] = env["OPENAI_API_KEY"]
     return env

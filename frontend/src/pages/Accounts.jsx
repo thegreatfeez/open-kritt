@@ -11,6 +11,12 @@ const PROVIDER_LINKS = {
   deepseek: 'https://platform.deepseek.com/api_keys',
 };
 
+// Providers whose credential dialog also collects an optional Anthropic-
+// compatible base URL, keyed to the placeholder/default shown in that field.
+const BASE_URL_PROVIDER_DEFAULTS = {
+  deepseek: 'https://api.deepseek.com/anthropic',
+};
+
 const WEEKLY_WINDOW_MINUTES = 7 * 24 * 60;
 const RESET_ALIGNMENT_TOLERANCE_MS = 5000;
 
@@ -169,8 +175,8 @@ export default function Accounts() {
         <div>
           <div style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.02em' }}>Accounts</div>
           <div style={{ color: 'var(--text-2)', marginTop: 7, maxWidth: 680, lineHeight: 1.5 }}>
-            See which model providers are ready. Sign in to Codex or Claude, or add an OpenRouter or DeepSeek API
-            key. Secret values are never returned by the API.
+            See which model providers are ready. Sign in to Codex or Claude, or add an OpenRouter or DeepSeek API key.
+            Secret values are never returned by the API.
           </div>
         </div>
         {data && (
@@ -947,7 +953,7 @@ function loginStatusLabel(status) {
 function CredentialDialog({ provider, onClose, onSave }) {
   const inputRef = useRef(null);
   const [credential, setCredential] = useState('');
-  const [baseUrl, setBaseUrl] = useState('https://api.deepseek.com/anthropic');
+  const [baseUrl, setBaseUrl] = useState(BASE_URL_PROVIDER_DEFAULTS[provider.id] || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -967,7 +973,7 @@ function CredentialDialog({ provider, onClose, onSave }) {
     setSaving(true);
     setError(null);
     try {
-      await onSave(provider, credential, provider.id === 'deepseek' ? baseUrl : undefined);
+      await onSave(provider, credential, Object.hasOwn(BASE_URL_PROVIDER_DEFAULTS, provider.id) ? baseUrl : undefined);
       setCredential('');
     } catch (nextError) {
       setError(nextError.errors?.[0]?.message || nextError.message || 'Could not save the credential.');
@@ -1012,9 +1018,12 @@ function CredentialDialog({ provider, onClose, onSave }) {
           placeholder="Paste key"
           className="account-credential-input mono"
         />
-        {provider.id === 'deepseek' && (
+        {Object.hasOwn(BASE_URL_PROVIDER_DEFAULTS, provider.id) && (
           <>
-            <label htmlFor="provider-base-url" style={{ display: 'block', fontWeight: 500, fontSize: 13, marginTop: 16 }}>
+            <label
+              htmlFor="provider-base-url"
+              style={{ display: 'block', fontWeight: 500, fontSize: 13, marginTop: 16 }}
+            >
               Anthropic-compatible base URL <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>· optional</span>
             </label>
             <input
@@ -1024,7 +1033,7 @@ function CredentialDialog({ provider, onClose, onSave }) {
               spellCheck="false"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://api.deepseek.com/anthropic"
+              placeholder={BASE_URL_PROVIDER_DEFAULTS[provider.id]}
               className="account-credential-input mono"
             />
           </>

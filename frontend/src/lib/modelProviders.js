@@ -7,7 +7,9 @@ const PROVIDER_HARNESSES = {
   claude: ['claude-code'],
   // Claude Code has first-class OpenRouter support. Codex remains available
   // for advanced installations with a matching Codex provider configuration.
-  openrouter: ['claude-code', 'codex'],
+  // omp (oh-my-pi, omp.sh) is the only harness for OpenRouter-exclusive
+  // "stealth" models (e.g. stealth/ox-alpha) not aliased into the others.
+  openrouter: ['claude-code', 'codex', 'omp'],
   // DeepSeek is driven entirely through the Claude Code harness, using
   // DeepSeek's Anthropic-compatible endpoint (ANTHROPIC_BASE_URL /
   // ANTHROPIC_AUTH_TOKEN pointed at DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY).
@@ -23,8 +25,8 @@ const PROVIDER_DEFAULT_MODELS = {
 };
 
 // The engine's live model-catalog refresh (model_catalog.py) only fetches
-// codex/claude/openrouter today, so deepseek never gets a live catalog.
-// Seed a static suggestion so the model field isn't pure free-text entry.
+// codex/claude/openrouter today, so deepseek never gets a live
+// catalog. Seed a static suggestion so the model field isn't pure free-text.
 const STATIC_MODEL_SUGGESTIONS = {
   deepseek: [
     { id: 'deepseek-v4-pro[1m]', label: 'deepseek-v4-pro[1m] (claude-code harness)', isDefault: true },
@@ -42,6 +44,7 @@ const PROVIDER_THINKING_EFFORTS = {
 const HARNESS_THINKING_EFFORTS = {
   codex: ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'claude-code': ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  omp: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
 };
 
 function normalizedProviderId(provider) {
@@ -128,7 +131,9 @@ export function modelsForModelProvider(catalog, provider) {
 export function usesFreeTextModelInput(catalog, provider) {
   const normalizedProvider = normalizedProviderId(provider);
   const providerCatalog = modelCatalogForProvider(catalog, normalizedProvider);
-  return providerCatalog?.input === 'text' || (!providerCatalog && ['openrouter', 'deepseek'].includes(normalizedProvider));
+  return (
+    providerCatalog?.input === 'text' || (!providerCatalog && ['openrouter', 'deepseek'].includes(normalizedProvider))
+  );
 }
 
 export function modelCatalogIsReady(catalog, provider) {
