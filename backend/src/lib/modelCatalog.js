@@ -150,7 +150,7 @@ export function modelCatalogEntry(provider, catalog) {
   const status = models.length > 0 && !defaultIsMissing ? 'ready' : hasText(lastError) ? 'unavailable' : 'loading';
   return {
     provider,
-input: ['openrouter', 'deepseek', 'xai'].includes(provider) ? 'text' : 'select',
+    input: ['openrouter', 'deepseek', 'xai'].includes(provider) ? 'text' : 'select',
     models,
     defaultModel,
     status,

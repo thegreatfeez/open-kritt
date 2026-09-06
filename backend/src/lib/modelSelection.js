@@ -15,7 +15,7 @@ export async function assertModelSelectionAvailable(
     throw new ValidationError([{ field: 'model_provider', message: 'The selected model provider is not configured.' }]);
   }
 
-if (['openrouter', 'deepseek', 'xai'].includes(modelProvider)) return;
+  if (['openrouter', 'deepseek', 'xai'].includes(modelProvider)) return;
 
   const catalog = modelCatalogEntry(modelProvider, await getCatalog(modelProvider));
   if (catalog.status !== 'ready') {

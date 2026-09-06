@@ -40,7 +40,7 @@ export const PROVIDER_DEFINITIONS = {
     description: 'OpenRouter-compatible models through a project API key.',
     management: 'api_key',
   },
-deepseek: {
+  deepseek: {
     label: 'DeepSeek',
     envKeys: ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'],
     credentialLabel: 'DeepSeek API key',
@@ -135,7 +135,7 @@ function queuedWrite(operation) {
 
 export function validateProviderCredential(provider, credential) {
   if (!MANAGED_CREDENTIAL_PROVIDERS.has(provider)) {
-return { field: 'provider', message: 'This provider does not use a managed API key in Accounts.' };
+    return { field: 'provider', message: 'This provider does not use a managed API key in Accounts.' };
   }
   if (typeof credential !== 'string' || !credential.trim()) {
     return { field: 'credential', message: 'Enter an API key.' };
@@ -278,7 +278,7 @@ export function providerCredentialStatuses({
       management: definition.management,
       configured,
       source,
-canManage: definition.management === 'login' || definition.management === 'api_key',
+      canManage: definition.management === 'login' || definition.management === 'api_key',
       // xAI keeps OpenRouter-style managed API keys alongside device login.
       canManageKey: MANAGED_CREDENTIAL_PROVIDERS.has(id),
       canRemove: MANAGED_CREDENTIAL_PROVIDERS.has(id) && (managedCredential || environmentCredential),

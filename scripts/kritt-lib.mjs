@@ -59,7 +59,6 @@ export const ENVIRONMENT_ITEMS = [
     info: 'Used for supported OpenRouter-compatible model and harness selections.',
   },
   {
-{
     key: 'DEEPSEEK_API_KEY',
     label: 'DeepSeek API key',
     info: 'Used for Claude Code harness scans through DeepSeek\'s Anthropic-compatible endpoint. Set DEEPSEEK_BASE_URL in .env to override the endpoint (defaults to https://api.deepseek.com/anthropic).',
@@ -68,7 +67,6 @@ export const ENVIRONMENT_ITEMS = [
     key: 'XAI_API_KEY',
     label: 'xAI API key',
     info: 'Used by the Grok Build harness via the xAI provider.',
-  },
   },
   {
     key: 'GITHUB_TOKEN',
@@ -1219,7 +1217,6 @@ export async function runSetup(options = {}) {
     write(context.io, '4) OpenAI API key');
     write(context.io, '5) Anthropic API key');
     write(context.io, '6) OpenRouter API key');
-<<<<<<< HEAD
     write(context.io, '7) DeepSeek API key');
     write(context.io, '8) xAI API key');
     write(context.io, '9) GitHub token');
@@ -1235,7 +1232,7 @@ export async function runSetup(options = {}) {
       await manageClaudeLogin(context);
       continue;
     }
-const providerItems = providerEnvironmentItems();
+    const providerItems = providerEnvironmentItems();
     const githubChoice = String(providerItems.length + 3);
     const item =
       providerItems[Number(choice) - 3] ||

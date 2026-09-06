@@ -179,7 +179,7 @@ export default function Accounts() {
         <div>
           <div style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.02em' }}>Accounts</div>
           <div style={{ color: 'var(--text-2)', marginTop: 7, maxWidth: 680, lineHeight: 1.5 }}>
-See which model providers are ready. Sign in to Codex, Claude, or xAI through their login flows, or add an
+            See which model providers are ready. Sign in to Codex, Claude, or xAI through their login flows, or add an
             OpenRouter, DeepSeek, or xAI API key. Secret values are never returned by the API.
           </div>
         </div>
@@ -378,7 +378,7 @@ export function ProviderCard({
 }
 
 export function providerActionLabel(provider) {
-if (provider.management !== 'login') {
+  if (provider.management !== 'login') {
     if (provider.configured) return 'Add or replace key';
     const credential = `${provider.credentialLabel || ''}`.trim();
     if (credential) {
