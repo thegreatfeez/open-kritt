@@ -9,6 +9,7 @@ DEFAULT_PROVIDER_CREDENTIALS_PATH = "/credentials/providers.json"
 PROVIDER_ENV_KEYS = {
     "openrouter": "OPENROUTER_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
+    "xai": "XAI_API_KEY",
 }
 # Providers whose managed credential also carries an optional Anthropic-
 # compatible base URL, keyed to the raw env var it's exported as.
@@ -44,10 +45,12 @@ JOB_PROVIDER_ENV_KEYS = {
     "claude": frozenset({"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"}),
     "openrouter": frozenset({"OPENROUTER_API_KEY"}),
     "deepseek": frozenset({"DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"}),
+    "xai": frozenset({"XAI_API_KEY"}),
 }
 JOB_HARNESS_ENV_KEYS = {
     "cursor": frozenset({"CURSOR_API_KEY", "CURSOR_AUTH_TOKEN", "CURSOR_AGENT_BIN"}),
     "omp": frozenset({"OMP_BIN"}),
+    "grok-build": frozenset({"GROK_BIN", "GROK_HOME"}),
 }
 
 

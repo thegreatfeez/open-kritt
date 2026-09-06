@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { prisma } from '../src/db.js';
 import {
   activeJobElapsedMs,
   activeJobRuntimeSelection,
@@ -11,9 +12,15 @@ import {
   isDerivativeScanStatusError,
   knownError,
   orderScanErrorsForDisplay,
+  statusSummariesByScan,
   summarizeExpectedWorkflowLineages,
 } from '../src/lib/repo.js';
-import { serializeScan } from '../src/lib/serialize.js';
+import {
+  serializeScan,
+  serializeStep,
+  serializeSupplementalPostScriptRun,
+  serializeVulnerability,
+} from '../src/lib/serialize.js';
 import { SCAN_STATUSES } from '../src/lib/constants.js';
 
 test('active workers expose workflow depth only for workflow steps', () => {
@@ -21,6 +28,101 @@ test('active workers expose workflow depth only for workflow steps', () => {
   assert.equal(activeJobWorkflowDepth({}, { depth: 0 }), 0);
   assert.equal(activeJobWorkflowDepth({ kind: 'post_script' }, { depth: 3 }), null);
   assert.equal(activeJobWorkflowDepth({ kind: 'step' }, null), null);
+});
+
+test('finding serialization exposes cumulative supplemental enrichment identity', () => {
+  const vulnerability = serializeVulnerability(
+    {
+      id: 31n,
+      scanId: 9n,
+      jsonAnswer: { summary: 'Finding' },
+      postScriptAnswer: null,
+      insertedAt: new Date('2026-08-17T10:00:00Z'),
+    },
+    {
+      enrichments: [
+        {
+          id: 71n,
+          scanId: 9n,
+          vulnerabilityId: 31n,
+          postScriptId: 4n,
+          postScriptName: 'Report',
+          supplementalRunId: 41n,
+          insertedAt: new Date('2026-08-17T10:01:00Z'),
+        },
+        {
+          id: 72n,
+          scanId: 9n,
+          vulnerabilityId: 31n,
+          postScriptId: 5n,
+          postScriptName: 'PoC',
+          supplementalRunId: 42n,
+          insertedAt: new Date('2026-08-17T10:02:00Z'),
+        },
+      ],
+    }
+  );
+
+  assert.deepEqual(vulnerability.supplementalPostScripts, {
+    count: 2,
+    runIds: ['41', '42'],
+    lastRunAt: new Date('2026-08-17T10:02:00Z'),
+  });
+  assert.equal(vulnerability.enrichments[0].supplemental, true);
+});
+
+test('supplemental run serialization exposes model settings and safe target errors', () => {
+  const serialized = serializeSupplementalPostScriptRun(
+    {
+      id: 41n,
+      scanId: 9n,
+      postScriptId: 4n,
+      postScriptName: 'Report',
+      model: 'gpt-5-codex',
+      modelProvider: 'codex',
+      harness: 'codex',
+      thinkingEffort: 'high',
+      retryOfRunId: 40n,
+      status: 'completed_with_errors',
+      targetCount: 1,
+      completedCount: 0,
+      failedCount: 1,
+      insertedAt: new Date('2026-08-18T10:00:00Z'),
+      updatedAt: new Date('2026-08-18T10:01:00Z'),
+    },
+    [
+      {
+        id: 51n,
+        vulnerabilityId: 31n,
+        status: 'failed',
+        attempts: 2,
+        error: 'The model timed out.',
+      },
+    ]
+  );
+
+  assert.equal(serialized.model, 'gpt-5-codex');
+  assert.equal(serialized.modelProvider, 'codex');
+  assert.equal(serialized.thinkingEffort, 'high');
+  assert.equal(serialized.retryOfRunId, '40');
+  assert.equal(serialized.targets[0].error, 'The model timed out.');
+});
+
+test('step serialization exposes bound routing IDs as JSON-safe strings', () => {
+  const serialized = serializeStep({
+    id: 20n,
+    name: 'Destination',
+    depth: 1,
+    multiOutput: true,
+    consumesAll: false,
+    boundSourceStepId: 10n,
+    isLastStep: true,
+    content: 'Review.',
+    outputFormat: '{"finding":"string"}',
+    outputTable: 'workflows.vulnerabilities',
+  });
+
+  assert.equal(serialized.boundSourceStepId, '10');
 });
 
 test('active worker duration begins at the harness phase instead of the earlier metadata claim', () => {
@@ -165,6 +267,37 @@ test('lineage summary repeats each concrete task before exposing accumulated out
   });
 });
 
+test('lineage summary counts only the one-to-one tasks selected by bound routing', () => {
+  const scan = { configuration: {} };
+  const steps = [
+    { id: 10n, depth: 0, consumesAll: false, boundSourceStepId: null, isLastStep: false },
+    { id: 11n, depth: 0, consumesAll: false, boundSourceStepId: null, isLastStep: false },
+    { id: 20n, depth: 1, consumesAll: false, boundSourceStepId: 10n, isLastStep: true },
+    { id: 21n, depth: 1, consumesAll: false, boundSourceStepId: 11n, isLastStep: true },
+  ];
+  const results = [
+    { id: 1n, stepId: 10n, prevId: null, prevTable: null, repeatRun: 1 },
+    { id: 2n, stepId: 11n, prevId: null, prevTable: null, repeatRun: 1 },
+  ];
+  const metadata = [
+    { kind: 'step', status: 'completed', stepId: 10n, prevId: null, prevTable: null, repeatRun: 1 },
+    { kind: 'step', status: 'completed', stepId: 11n, prevId: null, prevTable: null, repeatRun: 1 },
+    {
+      kind: 'step',
+      status: 'completed',
+      stepId: 20n,
+      prevId: 1n,
+      prevTable: 'workflows.step_results',
+      repeatRun: 1,
+    },
+  ];
+
+  assert.deepEqual(summarizeExpectedWorkflowLineages(scan, steps, metadata, results), {
+    expectedLineages: 4,
+    completedLineages: 3,
+  });
+});
+
 test('configured post-scripts preserve primary-first order and remove duplicates', () => {
   assert.deepEqual(
     configuredPostScriptIds({
@@ -173,6 +306,50 @@ test('configured post-scripts preserve primary-first order and remove duplicates
     }),
     ['4', '3', '2']
   );
+});
+
+test('status summary exposes successful empty step explanations', async (t) => {
+  const originalGroupBy = prisma.stepMetadata.groupBy;
+  const originalFindMany = prisma.stepMetadata.findMany;
+  prisma.stepMetadata.groupBy = async () => [
+    { scanId: 7n, kind: 'step', status: 'completed', stub: true, _count: { _all: 1 } },
+  ];
+  prisma.stepMetadata.findMany = async ({ where }) => {
+    if (where.status === 'running' || where.error) return [];
+    if (where.status === 'completed' && where.stub === true) {
+      return [
+        {
+          id: 12n,
+          scanId: 7n,
+          kind: 'step',
+          stepId: 10n,
+          status: 'completed',
+          phase: 'completed',
+          stubExplanation: 'No reachable entrypoints were found.',
+          runStartedAt: new Date('2026-09-04T10:00:00Z'),
+          runTimeMs: 100,
+          insertedAt: new Date('2026-09-04T10:00:00Z'),
+          updatedAt: new Date('2026-09-04T10:00:01Z'),
+        },
+      ];
+    }
+    throw new Error(`Unexpected step metadata query: ${JSON.stringify(where)}`);
+  };
+  t.after(() => {
+    prisma.stepMetadata.groupBy = originalGroupBy;
+    prisma.stepMetadata.findMany = originalFindMany;
+  });
+
+  const summaries = await statusSummariesByScan(
+    [{ id: 7n, status: 'completed', configuration: {} }],
+    new Map([['10', { id: 10n, depth: 0, name: 'Trace reachable flows' }]]),
+    new Map()
+  );
+  const summary = summaries.get('7');
+
+  assert.equal(summary.emptyStepResults, 1);
+  assert.equal(summary.recentEmptyResults[0].title, '0 · Trace reachable flows');
+  assert.equal(summary.recentEmptyResults[0].explanation, 'No reachable entrypoints were found.');
 });
 
 test('scan serialization distinguishes raw candidates from listed findings', () => {

@@ -22,6 +22,7 @@ const PROVIDER_LABELS = {
   claude: 'Claude',
   openrouter: 'OpenRouter',
   deepseek: 'DeepSeek',
+  xai: 'xAI',
 };
 
 export function modelConfigurationForCatalog(current, providers, catalog) {

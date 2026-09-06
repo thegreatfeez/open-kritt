@@ -1,4 +1,4 @@
-export const MODEL_PROVIDER_IDS = ['codex', 'claude', 'openrouter', 'deepseek'];
+export const MODEL_PROVIDER_IDS = ['codex', 'claude', 'openrouter', 'deepseek', 'xai'];
 export const MODEL_CATALOG_STATUSES = ['ready', 'loading', 'unavailable'];
 const SAFE_MODEL_NOTE_URLS = new Set(['https://chatgpt.com/cyber']);
 
@@ -7,6 +7,7 @@ const PROVIDER_HARNESSES = {
   claude: ['claude-code'],
   // Claude Code has first-class OpenRouter support. Codex remains available
   // for advanced installations with a matching Codex provider configuration.
+<<<<<<< HEAD
   // omp (oh-my-pi, omp.sh) is the only harness for OpenRouter-exclusive
   // "stealth" models (e.g. stealth/ox-alpha) not aliased into the others.
   openrouter: ['claude-code', 'codex', 'omp'],
@@ -15,6 +16,7 @@ const PROVIDER_HARNESSES = {
   // ANTHROPIC_AUTH_TOKEN pointed at DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY).
   // There is no Codex-side DeepSeek wiring.
   deepseek: ['claude-code'],
+  xai: ['grok-build'],
 };
 
 const PROVIDER_DEFAULT_MODELS = {
@@ -22,6 +24,7 @@ const PROVIDER_DEFAULT_MODELS = {
   claude: 'claude-sonnet-5',
   openrouter: 'z-ai/glm-5.2',
   deepseek: 'deepseek-v4-pro[1m]',
+  xai: 'grok-4.6',
 };
 
 // The engine's live model-catalog refresh (model_catalog.py) only fetches
@@ -39,12 +42,14 @@ const PROVIDER_THINKING_EFFORTS = {
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
   openrouter: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
   deepseek: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  xai: ['low', 'medium', 'high', 'xhigh'],
 };
 
 const HARNESS_THINKING_EFFORTS = {
   codex: ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'claude-code': ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
   omp: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  'grok-build': ['low', 'medium', 'high', 'xhigh'],
 };
 
 function normalizedProviderId(provider) {
@@ -132,7 +137,7 @@ export function usesFreeTextModelInput(catalog, provider) {
   const normalizedProvider = normalizedProviderId(provider);
   const providerCatalog = modelCatalogForProvider(catalog, normalizedProvider);
   return (
-    providerCatalog?.input === 'text' || (!providerCatalog && ['openrouter', 'deepseek'].includes(normalizedProvider))
+    providerCatalog?.input === 'text' || (!providerCatalog && ['openrouter', 'deepseek', 'xai'].includes(normalizedProvider))
   );
 }
 

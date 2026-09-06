@@ -42,6 +42,21 @@ const CLAUDE_CODE_MODELS = [
   },
 ];
 
+const XAI_GROK_MODELS = [
+  {
+    id: 'grok-4.6',
+    label: 'Grok 4.6',
+    thinkingEfforts: ['low', 'medium', 'high', 'xhigh'],
+    isDefault: true,
+  },
+  {
+    id: 'grok-4.5',
+    label: 'Grok 4.5',
+    thinkingEfforts: ['low', 'medium', 'high'],
+    isDefault: false,
+  },
+];
+
 function normalizedProvider(provider) {
   return `${provider || ''}`.trim().toLowerCase();
 }
@@ -115,6 +130,18 @@ export function modelCatalogEntry(provider, catalog) {
     };
   }
 
+  // Device login authenticates Grok Build but cannot call xAI's API-key-only
+  // /v1/models endpoint. Keep the current default so the picker is usable.
+  if (provider === 'xai' && (!models.length || !defaultModel)) {
+    return {
+      provider,
+      input: 'text',
+      models: XAI_GROK_MODELS,
+      defaultModel: 'grok-4.6',
+      status: 'ready',
+    };
+  }
+
   const lastError = catalogValue(catalog, 'lastError', 'last_error');
   const defaultIsMissing = !configuredDefault || !defaultModel;
   // A failed refresh must not erase a previously valid bounded catalog. Without
@@ -123,7 +150,7 @@ export function modelCatalogEntry(provider, catalog) {
   const status = models.length > 0 && !defaultIsMissing ? 'ready' : hasText(lastError) ? 'unavailable' : 'loading';
   return {
     provider,
-    input: ['openrouter', 'deepseek'].includes(provider) ? 'text' : 'select',
+input: ['openrouter', 'deepseek', 'xai'].includes(provider) ? 'text' : 'select',
     models,
     defaultModel,
     status,

@@ -40,7 +40,7 @@ export const PROVIDER_DEFINITIONS = {
     description: 'OpenRouter-compatible models through a project API key.',
     management: 'api_key',
   },
-  deepseek: {
+deepseek: {
     label: 'DeepSeek',
     envKeys: ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'],
     credentialLabel: 'DeepSeek API key',
@@ -48,9 +48,16 @@ export const PROVIDER_DEFINITIONS = {
       "DeepSeek models driven through the Claude Code harness, via DeepSeek's Anthropic-compatible endpoint.",
     management: 'api_key',
   },
+  xai: {
+    label: 'xAI',
+    envKeys: ['XAI_API_KEY'],
+    credentialLabel: 'xAI API key',
+    description: 'Grok Build through an xAI device login or API key.',
+    management: 'login',
+  },
 };
 
-const MANAGED_CREDENTIAL_PROVIDERS = new Set(['openrouter', 'deepseek']);
+const MANAGED_CREDENTIAL_PROVIDERS = new Set(['openrouter', 'deepseek', 'xai']);
 
 const MAX_CREDENTIAL_LENGTH = 16 * 1024;
 let writeQueue = Promise.resolve();
@@ -128,7 +135,7 @@ function queuedWrite(operation) {
 
 export function validateProviderCredential(provider, credential) {
   if (!MANAGED_CREDENTIAL_PROVIDERS.has(provider)) {
-    return { field: 'provider', message: 'This provider does not accept an API key in Accounts.' };
+return { field: 'provider', message: 'This provider does not use a managed API key in Accounts.' };
   }
   if (typeof credential !== 'string' || !credential.trim()) {
     return { field: 'credential', message: 'Enter an API key.' };
@@ -271,7 +278,9 @@ export function providerCredentialStatuses({
       management: definition.management,
       configured,
       source,
-      canManage: definition.management === 'login' || MANAGED_CREDENTIAL_PROVIDERS.has(id),
+canManage: definition.management === 'login' || definition.management === 'api_key',
+      // xAI keeps OpenRouter-style managed API keys alongside device login.
+      canManageKey: MANAGED_CREDENTIAL_PROVIDERS.has(id),
       canRemove: MANAGED_CREDENTIAL_PROVIDERS.has(id) && (managedCredential || environmentCredential),
       managed: managedCredential,
     };
