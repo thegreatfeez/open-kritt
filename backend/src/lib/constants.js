@@ -71,7 +71,7 @@ export const SCAN_STATUSES = [
 export const THINKING_EFFORTS = ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 export const DEFAULT_THINKING_EFFORT = 'medium';
 
-export const MODEL_PROVIDERS = ['codex', 'claude', 'openrouter', 'deepseek', 'xai'];
+export const MODEL_PROVIDERS = ['codex', 'claude', 'openrouter', 'xai', 'deepseek'];
 export const DEFAULT_MODEL_PROVIDER = 'openrouter';
 
 export const HARNESSES = ['codex', 'claude-code', 'cursor', 'omp', 'grok-build'];
@@ -90,8 +90,8 @@ export const MODEL_PROVIDER_HARNESSES = {
   // harness for OpenRouter-exclusive "stealth" models (e.g. stealth/ox-alpha)
   // that aren't aliased into codex/claude-code's own model catalogs.
   openrouter: ['codex', 'claude-code', 'omp'],
-  deepseek: ['claude-code'],
   xai: ['grok-build'],
+  deepseek: ['codex'],
 };
 export const HARNESS_THINKING_EFFORTS = {
   codex: ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
@@ -303,4 +303,26 @@ export function normalizeOutputFormat(input) {
     }
   }
   return out;
+}
+
+export function duplicateOutputFormatKeys(input) {
+  let value = input;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const field of value) {
+    if (!field || typeof field !== 'object' || !('key' in field)) continue;
+    const key = `${field.key}`;
+    if (seen.has(key)) duplicates.add(key);
+    else seen.add(key);
+  }
+  return [...duplicates];
 }

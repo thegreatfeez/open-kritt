@@ -6,8 +6,10 @@ import {
   CLAUDE_LOGIN,
   CODEX_LOGIN,
   ENVIRONMENT_ITEMS,
-MANAGED_PROVIDER_LABELS,
+  MANAGED_PROVIDER_LABELS,
+  checkDockerEnvironment,
   disableManagedProviderCredential,
+  dockerEnvironmentMessage,
   UserCancelledError,
   ensureEnvFile,
   getSetupStatus,
@@ -552,14 +554,14 @@ function statusDetails(status) {
     ),
   ];
   details.push(
-...providerEnvironmentItems().map((item) => {
+    ...providerEnvironmentItems().map((item) => {
       const present = environmentItemPresent(status, item);
       return modelAccessDetail(`${present ? '✓' : '○'} ${item.label} ${present ? 'present' : 'not set'}`, present);
     })
   );
   details.push(
     ...(status.managedProviders || []).map((provider) => ({
-text: `✓ ${MANAGED_PROVIDER_LABELS[provider]} present (managed from Accounts)`,
+      text: `✓ ${MANAGED_PROVIDER_LABELS[provider]} present (managed from Accounts)`,
       tone: 'success',
     }))
   );
@@ -667,6 +669,20 @@ async function confirmExternalDestination(terminal, context, targetPath) {
   });
 }
 
+// Suspending swaps back to the normal screen buffer, and resuming hides it again, so
+// anything the login prints there is gone by the time a notice appears. Report a Docker
+// problem before that happens.
+async function dockerReady(terminal, context, title) {
+  const preflight = await checkDockerEnvironment({ rootDir: context.rootDir, runner: context.runner });
+  if (preflight.ok) return true;
+  await terminal.notice({
+    title,
+    subtitle: 'Docker is not ready',
+    message: dockerEnvironmentMessage(preflight),
+  });
+  return false;
+}
+
 async function manageCodexLogin(terminal, context) {
   while (true) {
     const status = await getSetupStatus(context);
@@ -740,6 +756,7 @@ async function manageCodexLogin(terminal, context) {
       continue;
     }
     if (!(await confirmExternalDestination(terminal, context, dirname(targetPath)))) continue;
+    if (!(await dockerReady(terminal, context, CODEX_LOGIN.label))) continue;
     await terminal.suspend();
     let result = { ok: false, message: 'Codex login did not complete.' };
     try {
@@ -801,6 +818,7 @@ async function manageClaudeLogin(terminal, context) {
       continue;
     }
 
+    if (!(await dockerReady(terminal, context, CLAUDE_LOGIN.label))) continue;
     await terminal.suspend();
     let saved = false;
     try {
@@ -855,7 +873,7 @@ async function runSetupScreen(terminal, context) {
           label: 'Claude login',
           description: status.claudeLoginPresent ? 'present' : 'sign in with a Claude subscription',
         },
-...providerEnvironmentItems().map((item) => ({
+        ...providerEnvironmentItems().map((item) => ({
           id: item.key,
           label: item.label,
           description: environmentItemPresent(status, item) ? 'present' : 'not set',

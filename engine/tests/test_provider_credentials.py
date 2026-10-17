@@ -58,6 +58,7 @@ def test_provider_environment_reads_managed_credentials(tmp_path):
                 "credentials": {
                     "codex": "codex-managed",
                     "claude": "claude-managed",
+                    "deepseek": "deepseek-managed",
                     "openrouter": "openrouter-managed",
                     "unknown": "ignored",
                 },
@@ -76,6 +77,7 @@ def test_provider_environment_reads_managed_credentials(tmp_path):
 
     assert env["CODEX_API_KEY"] == "old-codex"
     assert "ANTHROPIC_API_KEY" not in env
+    assert env["DEEPSEEK_API_KEY"] == "deepseek-managed"
     assert env["OPENROUTER_API_KEY"] == "openrouter-managed"
     assert env["UNRELATED"] == "keep"
     assert "unknown" not in env
@@ -109,6 +111,7 @@ def test_job_environment_only_includes_selected_provider_and_harness_credentials
         "GITHUB_TOKEN": "github-secret",
         "OPENAI_API_KEY": "openai-secret",
         "ANTHROPIC_API_KEY": "anthropic-secret",
+        "DEEPSEEK_API_KEY": "deepseek-secret",
         "OPENROUTER_API_KEY": "openrouter-secret",
         "XAI_API_KEY": "xai-secret",
         "CURSOR_API_KEY": "cursor-secret",
@@ -118,6 +121,7 @@ def test_job_environment_only_includes_selected_provider_and_harness_credentials
     codex = job_environment("codex", "codex", source)
     openrouter_claude = job_environment("openrouter", "claude-code", source)
     openrouter_cursor = job_environment("openrouter", "cursor", source)
+    deepseek_codex = job_environment("deepseek", "codex", source)
     xai_grok = job_environment("xai", "grok-build", source)
 
     assert codex == {"PATH": "/bin", "OPENAI_API_KEY": "openai-secret", "CODEX_API_KEY": "openai-secret"}
@@ -127,39 +131,12 @@ def test_job_environment_only_includes_selected_provider_and_harness_credentials
         "OPENROUTER_API_KEY": "openrouter-secret",
         "CURSOR_API_KEY": "cursor-secret",
     }
+    assert deepseek_codex == {"PATH": "/bin", "DEEPSEEK_API_KEY": "deepseek-secret"}
     assert xai_grok == {
         "PATH": "/bin",
         "XAI_API_KEY": "xai-secret",
         "GROK_BIN": "/usr/local/bin/grok",
     }
-    for env in (codex, openrouter_claude, openrouter_cursor, xai_grok):
+    for env in (codex, openrouter_claude, openrouter_cursor, deepseek_codex, xai_grok):
         assert "DATABASE_URL" not in env
         assert "GITHUB_TOKEN" not in env
-
-
-def test_deepseek_job_environment_includes_only_its_key_and_base_url(tmp_path):
-    credential_path = tmp_path / "providers.json"
-    credential_path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "credentials": {"deepseek": "deepseek-secret"},
-                "baseUrls": {"deepseek": "https://api.deepseek.com/anthropic"},
-                "disabledEnvironmentProviders": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-    source = {
-        "PATH": "/bin",
-        "OPEN_KRITT_PROVIDER_CREDENTIALS_PATH": str(credential_path),
-        "OPENROUTER_API_KEY": "other-secret",
-    }
-
-    env = job_environment("deepseek", "claude-code", source)
-
-    assert env == {
-        "PATH": "/bin",
-        "DEEPSEEK_API_KEY": "deepseek-secret",
-        "DEEPSEEK_BASE_URL": "https://api.deepseek.com/anthropic",
-    }

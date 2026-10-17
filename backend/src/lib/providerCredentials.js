@@ -9,15 +9,6 @@ import { providerLoginIsConfigured } from './providerLogins.js';
 export const PROVIDER_CREDENTIALS_PATH =
   process.env.OPEN_KRITT_PROVIDER_CREDENTIALS_PATH || '/credentials/providers.json';
 
-export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com/anthropic';
-
-// Providers whose Accounts credential also carries an optional Anthropic-
-// compatible base URL, alongside the env var that holds it and the sane
-// default applied when the field is left blank.
-export const BASE_URL_PROVIDERS = {
-  deepseek: { envKey: 'DEEPSEEK_BASE_URL', defaultUrl: DEEPSEEK_DEFAULT_BASE_URL },
-};
-
 export const PROVIDER_DEFINITIONS = {
   codex: {
     label: 'Codex',
@@ -40,14 +31,6 @@ export const PROVIDER_DEFINITIONS = {
     description: 'OpenRouter-compatible models through a project API key.',
     management: 'api_key',
   },
-  deepseek: {
-    label: 'DeepSeek',
-    envKeys: ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL'],
-    credentialLabel: 'DeepSeek API key',
-    description:
-      "DeepSeek models driven through the Claude Code harness, via DeepSeek's Anthropic-compatible endpoint.",
-    management: 'api_key',
-  },
   xai: {
     label: 'xAI',
     envKeys: ['XAI_API_KEY'],
@@ -55,9 +38,16 @@ export const PROVIDER_DEFINITIONS = {
     description: 'Grok Build through an xAI device login or API key.',
     management: 'login',
   },
+  deepseek: {
+    label: 'DeepSeek',
+    envKeys: ['DEEPSEEK_API_KEY'],
+    credentialLabel: 'DeepSeek API key',
+    description: 'DeepSeek models through the Codex harness, with model discovery and API checks.',
+    management: 'api_key',
+  },
 };
 
-const MANAGED_CREDENTIAL_PROVIDERS = new Set(['openrouter', 'deepseek', 'xai']);
+const MANAGED_CREDENTIAL_PROVIDERS = new Set(['openrouter', 'xai', 'deepseek']);
 
 const MAX_CREDENTIAL_LENGTH = 16 * 1024;
 let writeQueue = Promise.resolve();
@@ -73,7 +63,7 @@ function hasConfiguredFlag(value) {
 }
 
 function emptyStore() {
-  return { version: 1, credentials: {}, baseUrls: {}, disabledEnvironmentProviders: [] };
+  return { version: 1, credentials: {}, disabledEnvironmentProviders: [] };
 }
 
 function normalizeStore(value) {
@@ -88,11 +78,7 @@ function normalizeStore(value) {
   const disabledEnvironmentProviders = Array.isArray(value.disabledEnvironmentProviders)
     ? [...new Set(value.disabledEnvironmentProviders.filter((provider) => MANAGED_CREDENTIAL_PROVIDERS.has(provider)))]
     : [];
-  const baseUrls = {};
-  for (const provider of Object.keys(BASE_URL_PROVIDERS)) {
-    if (hasValue(value.baseUrls?.[provider])) baseUrls[provider] = String(value.baseUrls[provider]);
-  }
-  return { version: 1, credentials, baseUrls, disabledEnvironmentProviders };
+  return { version: 1, credentials, disabledEnvironmentProviders };
 }
 
 export function readManagedCredentialStateSync(credentialsPath = PROVIDER_CREDENTIALS_PATH) {
@@ -146,32 +132,15 @@ export function validateProviderCredential(provider, credential) {
   return null;
 }
 
-export function validateProviderBaseUrl(provider, baseUrl) {
-  if (!Object.hasOwn(BASE_URL_PROVIDERS, provider)) return null;
-  // Optional: this provider's Anthropic-compatible endpoint has a sane
-  // default (BASE_URL_PROVIDERS[provider].defaultUrl) applied when blank.
-  if (!hasValue(baseUrl)) return null;
-  try {
-    const url = new URL(String(baseUrl).trim());
-    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw new Error('invalid');
-    return null;
-  } catch {
-    return { field: 'baseUrl', message: 'Enter a valid HTTP or HTTPS base URL.' };
-  }
-}
-
 export async function saveManagedProviderCredential(
   provider,
   credential,
-  { credentialsPath = PROVIDER_CREDENTIALS_PATH, environmentFilePath = PROJECT_ENV_FILE_PATH, baseUrl } = {}
+  { credentialsPath = PROVIDER_CREDENTIALS_PATH, environmentFilePath = PROJECT_ENV_FILE_PATH } = {}
 ) {
   const validationError = validateProviderCredential(provider, credential);
-  const baseUrlEnvKey = BASE_URL_PROVIDERS[provider]?.envKey;
-  const resolvedBaseUrl = hasValue(baseUrl) ? baseUrl : ((baseUrlEnvKey ? process.env[baseUrlEnvKey] : '') ?? '');
-  const baseUrlError = validateProviderBaseUrl(provider, resolvedBaseUrl);
-  if (validationError || baseUrlError) {
-    const error = new Error((validationError || baseUrlError).message);
-    error.validationError = validationError || baseUrlError;
+  if (validationError) {
+    const error = new Error(validationError.message);
+    error.validationError = validationError;
     throw error;
   }
 
@@ -180,23 +149,16 @@ export async function saveManagedProviderCredential(
     const previousStore = {
       ...store,
       credentials: { ...store.credentials },
-      baseUrls: { ...(store.baseUrls || {}) },
       disabledEnvironmentProviders: [...store.disabledEnvironmentProviders],
     };
     store.credentials[provider] = credential.trim();
-    if (baseUrlEnvKey && hasValue(resolvedBaseUrl)) {
-      store.baseUrls = { ...(store.baseUrls || {}), [provider]: String(resolvedBaseUrl).trim() };
-    }
     store.disabledEnvironmentProviders = store.disabledEnvironmentProviders.filter(
       (candidate) => candidate !== provider
     );
     await writeStore(credentialsPath, store);
     try {
       await updateEnvironmentFile(
-        {
-          [PROVIDER_DEFINITIONS[provider].envKeys[0]]: credential.trim(),
-          ...(baseUrlEnvKey && hasValue(resolvedBaseUrl) ? { [baseUrlEnvKey]: String(resolvedBaseUrl).trim() } : {}),
-        },
+        { [PROVIDER_DEFINITIONS[provider].envKeys[0]]: credential.trim() },
         { environmentFilePath }
       );
     } catch (error) {
@@ -220,24 +182,15 @@ export async function removeManagedProviderCredential(
     const previousStore = {
       ...store,
       credentials: { ...store.credentials },
-      baseUrls: { ...(store.baseUrls || {}) },
       disabledEnvironmentProviders: [...store.disabledEnvironmentProviders],
     };
     const existed = Object.hasOwn(store.credentials, provider);
     delete store.credentials[provider];
-    if (store.baseUrls) delete store.baseUrls[provider];
     const wasDisabled = store.disabledEnvironmentProviders.includes(provider);
     if (disableEnvironment && !wasDisabled) store.disabledEnvironmentProviders.push(provider);
     await writeStore(credentialsPath, store);
     try {
-      const baseUrlEnvKey = BASE_URL_PROVIDERS[provider]?.envKey;
-      await updateEnvironmentFile(
-        {
-          [PROVIDER_DEFINITIONS[provider].envKeys[0]]: '',
-          ...(baseUrlEnvKey ? { [baseUrlEnvKey]: '' } : {}),
-        },
-        { environmentFilePath }
-      );
+      await updateEnvironmentFile({ [PROVIDER_DEFINITIONS[provider].envKeys[0]]: '' }, { environmentFilePath });
     } catch (error) {
       await writeStore(credentialsPath, previousStore);
       throw error;
@@ -258,9 +211,7 @@ export function providerCredentialStatuses({
     const managedCredential = hasValue(managed[id]);
     const environmentCredential =
       !disabledEnvironmentProviders.has(id) &&
-      (Object.hasOwn(BASE_URL_PROVIDERS, id) ? definition.envKeys.slice(0, 1) : definition.envKeys).some(
-        (key) => hasValue(env[key]) || hasConfiguredFlag(env[`OPEN_KRITT_${key}_CONFIGURED`])
-      );
+      definition.envKeys.some((key) => hasValue(env[key]) || hasConfiguredFlag(env[`OPEN_KRITT_${key}_CONFIGURED`]));
     const savedLogin = providerLoginIsConfigured(id, { env, ...loginOptions });
     const configured = managedCredential || environmentCredential || savedLogin;
     const source = managedCredential
@@ -277,6 +228,8 @@ export function providerCredentialStatuses({
       credentialLabel: definition.credentialLabel,
       management: definition.management,
       configured,
+      apiKeyConfigured: managedCredential || environmentCredential,
+      apiKeyPath: definition.envKeys[0],
       source,
       canManage: definition.management === 'login' || definition.management === 'api_key',
       // xAI keeps OpenRouter-style managed API keys alongside device login.

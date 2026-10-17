@@ -43,8 +43,8 @@ over their prompts, workflows, model providers, and infrastructure.
 ### What it does
 
 - **Build workflows** — chain focused prompts into reusable security research playbooks.
-- **Run scans** — analyze remote or local repositories and their dependencies with Codex
-  or Claude Code.
+- **Run scans** — analyze remote or local repositories and their dependencies with Codex,
+  Claude Code, or Grok Build.
 - **Verify findings** — use post-scripts to validate issues, build proofs of concept, and
   produce reports.
 - **Export scan results** — package canonical findings, structured data, post-processing
@@ -55,7 +55,7 @@ over their prompts, workflows, model providers, and infrastructure.
 - **Prioritize results** — apply custom severity rankers, a consistent finding schema,
   and automatic de-duplication.
 - **Bring your own model access** — use a Codex login or connect through OpenAI,
-  Anthropic, OpenRouter, or xAI.
+  Anthropic, DeepSeek, OpenRouter, or xAI.
 
 > **Built from real security research.** The Kritt team has earned over **$1,500,000 in
 > bug-bounty payouts** under the researcher name **Blockian**
@@ -103,6 +103,9 @@ and build proofs of concept. Run open·kritt on a dedicated Docker host or VM; s
 For prerequisites, manual Docker setup, and provider-specific instructions, read the
 [installation guide](docs-site/getting-started/installation-and-setup.mdx) and
 [AI provider setup](docs-site/ai-provider-setup/overview.mdx).
+
+In **Accounts**, use the persisted **Active** switch to choose which accounts may receive
+new assignments while keeping other credentials saved. See [active provider accounts](docs/account-activity.md).
 
 ## Documentation
 

@@ -5,8 +5,12 @@ import { DEFAULT_WORKFLOW_NAMES, DEFAULT_WORKFLOWS } from '../src/lib/defaultWor
 import { validateWorkflow } from '../src/lib/validation.js';
 
 test('ships valid default workflows', () => {
-  assert.deepEqual(DEFAULT_WORKFLOW_NAMES, ['external-flow-analysis', 'Cosmos ABCI Panic Halt Review']);
-  assert.equal(DEFAULT_WORKFLOWS.length, 2);
+  assert.deepEqual(DEFAULT_WORKFLOW_NAMES, [
+    'external-flow-analysis',
+    'Cosmos ABCI Panic Halt Review',
+    'Solana Program Security Review',
+  ]);
+  assert.equal(DEFAULT_WORKFLOWS.length, 3);
 
   for (const workflow of DEFAULT_WORKFLOWS) {
     const validated = validateWorkflow({

@@ -1062,7 +1062,7 @@ def test_codex_harness_uses_dangerous_permissions_and_web_search(monkeypatch):
 
     monkeypatch.setattr(harnesses, "_run_process", fake_run_process)
 
-    result = CodexHarness(timeout_seconds=5).run(
+    result = CodexHarness(timeout_seconds=5, model_provider="codex", fast_mode=True).run(
         prompt="prompt",
         schema=output_schema('{"thing":"string"}', multi_output=False),
         repo_dir="/tmp",
@@ -1074,8 +1074,40 @@ def test_codex_harness_uses_dangerous_permissions_and_web_search(monkeypatch):
     assert captured["cmd"][:3] == ["codex", "--search", "exec"]
     assert "--dangerously-bypass-approvals-and-sandbox" in captured["cmd"]
     assert "agents.max_concurrent_threads_per_session=5" in captured["cmd"]
+    assert "features.fast_mode=true" in captured["cmd"]
+    assert 'service_tier="fast"' in captured["cmd"]
     assert "--ephemeral" not in captured["cmd"]
     assert "--sandbox" not in captured["cmd"]
+
+
+def test_codex_resume_keeps_native_fast_mode(monkeypatch, tmp_path):
+    captured = {}
+    output_path = tmp_path / "resume-output.json"
+
+    def fake_run_process(cmd, prompt, cwd, timeout, env=None):
+        captured["cmd"] = cmd
+        output_path.write_text(
+            json.dumps(marked({"stub": True, "stub_explanation": "No matching records.", "results": []})),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    monkeypatch.setattr(harnesses, "_run_process", fake_run_process)
+
+    result = CodexHarness(timeout_seconds=5, model_provider="codex", fast_mode=True)._resume_for_json(
+        session_id="session-1",
+        schema=output_schema('{"thing":"string"}', multi_output=False),
+        schema_path=str(tmp_path / "schema.json"),
+        output_path=str(output_path),
+        repo_dir=str(tmp_path),
+        model="gpt-5.6-luna",
+        thinking_effort="low",
+        env={"HOME": str(tmp_path), "CODEX_HOME": str(tmp_path / ".codex")},
+    )
+
+    assert result.payload == marked({"stub": True, "stub_explanation": "No matching records.", "results": []})
+    assert "features.fast_mode=true" in captured["cmd"]
+    assert 'service_tier="fast"' in captured["cmd"]
 
 
 def test_codex_harness_extracts_fenced_json_from_text_result(monkeypatch):
@@ -1372,87 +1404,6 @@ def test_claude_harness_uses_dangerous_permissions_and_default_tools(monkeypatch
     assert source_schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert "$schema" not in claude_schema
     assert claude_schema["properties"][EXTRACTOR_HELPER_FIELD] == {"type": "boolean", "const": True}
-
-
-def test_claude_harness_routes_deepseek_through_anthropic_compatible_endpoint(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake_run_process(cmd, prompt, cwd, timeout, env=None):
-        captured["cmd"] = cmd
-        captured["env"] = env
-        return SimpleNamespace(
-            stdout=json.dumps(
-                {
-                    "result": {
-                        "structured_output": marked(
-                            {"stub": True, "stub_explanation": "No matching records.", "results": []}
-                        )
-                    },
-                    "usage": {"input_tokens": 1},
-                }
-            ),
-            stderr="",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(harnesses, "_run_process", fake_run_process)
-    monkeypatch.setattr(harnesses, "claude_oauth_timeout_seconds", lambda *_args: 3)
-
-    result = ClaudeHarness(timeout_seconds=5, model_provider="deepseek").run(
-        prompt="prompt",
-        schema=output_schema('{"thing":"string"}', multi_output=False),
-        repo_dir="/tmp",
-        model="deepseek-v4-pro[1m]",
-        thinking_effort="high",
-        env={
-            "HOME": str(tmp_path / "home"),
-            "CLAUDE_HOME": str(tmp_path / "home" / ".claude"),
-            "CLAUDE_CONFIG_DIR": str(tmp_path / "home" / ".claude"),
-            "DEEPSEEK_API_KEY": "ds-key",
-        },
-    )
-
-    assert result.payload == marked({"stub": True, "stub_explanation": "No matching records.", "results": []})
-    assert captured["cmd"][captured["cmd"].index("--model") + 1] == "deepseek-v4-pro[1m]"
-    assert captured["cmd"][captured["cmd"].index("--output-format") + 1] == "json"
-    assert "--json-schema" in captured["cmd"]
-    assert captured["env"]["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
-    assert captured["env"]["ANTHROPIC_AUTH_TOKEN"] == "ds-key"
-    assert captured["env"]["ANTHROPIC_API_KEY"] == ""
-    assert captured["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "deepseek-v4-pro[1m]"
-    assert captured["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "deepseek-v4-pro[1m]"
-    assert captured["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "deepseek-v4-flash"
-    assert captured["env"]["CLAUDE_CODE_SUBAGENT_MODEL"] == "deepseek-v4-flash"
-    assert harnesses.claude_model_provider("deepseek-v4-pro[1m]", captured["env"], "deepseek") == "deepseek"
-
-
-def test_claude_harness_deepseek_honors_custom_base_url(monkeypatch, tmp_path):
-    captured = {}
-
-    def fake_run_process(cmd, prompt, cwd, timeout, env=None):
-        captured["env"] = env
-        return SimpleNamespace(
-            stdout=json.dumps({"result": {"structured_output": marked({"stub": True, "results": []})}}),
-            stderr="",
-            returncode=0,
-        )
-
-    monkeypatch.setattr(harnesses, "_run_process", fake_run_process)
-    monkeypatch.setattr(harnesses, "claude_oauth_timeout_seconds", lambda *_args: 3)
-
-    ClaudeHarness(timeout_seconds=5, model_provider="deepseek").run(
-        prompt="prompt",
-        schema=output_schema('{"thing":"string"}', multi_output=False),
-        repo_dir="/tmp",
-        model="deepseek-v4-pro[1m]",
-        env={
-            "HOME": str(tmp_path / "home"),
-            "DEEPSEEK_API_KEY": "ds-key",
-            "DEEPSEEK_BASE_URL": "https://custom.example.com/anthropic",
-        },
-    )
-
-    assert captured["env"]["ANTHROPIC_BASE_URL"] == "https://custom.example.com/anthropic"
 
 
 def test_claude_harness_can_route_glm_through_openrouter(monkeypatch, tmp_path):
@@ -2902,6 +2853,7 @@ def test_worker_moves_finished_workflow_into_post_processing(monkeypatch, tmp_pa
     assert all(kwargs["model_provider"] == "openrouter" for _name, kwargs in harness_calls)
     assert all(kwargs["codex_model_provider"] == "private-openrouter" for _name, kwargs in harness_calls)
     assert all(kwargs["codex_max_subagents"] == 5 for _name, kwargs in harness_calls)
+    assert all(kwargs["codex_fast_mode"] is False for _name, kwargs in harness_calls)
 
 
 def test_worker_retries_strict_validation_then_writes_results(monkeypatch, tmp_path):

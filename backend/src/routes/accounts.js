@@ -1,19 +1,19 @@
 import { Router } from 'express';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { createDeepSeekClient, DeepSeekError } from '../lib/deepseek.js';
 import { accountLoginManager } from '../lib/accountLogins.js';
 import {
   consumeCodexManualReset,
   getAccountProvider,
   getAccountsOverview,
   getAccountsSummary,
+  setAccountActive,
 } from '../lib/accounts.js';
 import {
-  BASE_URL_PROVIDERS,
   removeManagedProviderCredential,
   saveManagedProviderCredential,
   validateProviderCredential,
-  validateProviderBaseUrl,
 } from '../lib/providerCredentials.js';
 
 export function createAccountsRouter({
@@ -24,6 +24,8 @@ export function createAccountsRouter({
   removeCredential = removeManagedProviderCredential,
   loginManager = accountLoginManager,
   consumeReset = consumeCodexManualReset,
+  deepseek = createDeepSeekClient(),
+  setActive = setAccountActive,
 } = {}) {
   const router = Router();
 
@@ -60,16 +62,42 @@ export function createAccountsRouter({
     }
   });
 
+  router.get('/deepseek/models', async (req, res) => {
+    try {
+      res.json(await deepseek.listModels());
+    } catch (error) {
+      res.status(error instanceof DeepSeekError ? error.statusCode : 502).json({
+        error: error instanceof DeepSeekError ? error.message : 'Could not load DeepSeek models.',
+      });
+    }
+  });
+
+  router.post('/deepseek/check', async (req, res) => {
+    try {
+      res.json(await deepseek.check(req.body?.model));
+    } catch (error) {
+      res.status(error instanceof DeepSeekError ? error.statusCode : 502).json({
+        error: error instanceof DeepSeekError ? error.message : 'Could not check the DeepSeek API.',
+      });
+    }
+  });
+
+  router.patch('/:provider/account/:activityId/active', async (req, res, next) => {
+    try {
+      res.json(await setActive(req.params.provider, req.params.activityId, req.body?.active));
+    } catch (error) {
+      if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+      next(error);
+    }
+  });
+
   router.post('/:provider', async (req, res, next) => {
     try {
       const validationError = validateProviderCredential(req.params.provider, req.body?.credential);
-      const baseUrlEnvKey = BASE_URL_PROVIDERS[req.params.provider]?.envKey;
-      const baseUrl = req.body?.baseUrl ?? (baseUrlEnvKey ? process.env[baseUrlEnvKey] : undefined);
-      const baseUrlError = validateProviderBaseUrl(req.params.provider, baseUrl);
-      if (validationError || baseUrlError) {
-        return res.status(422).json({ error: 'Validation failed.', errors: [validationError || baseUrlError] });
+      if (validationError) {
+        return res.status(422).json({ error: 'Validation failed.', errors: [validationError] });
       }
-      await saveCredential(req.params.provider, req.body.credential, { baseUrl });
+      await saveCredential(req.params.provider, req.body.credential);
       return res.json(await getOverview());
     } catch (error) {
       next(error);

@@ -304,6 +304,25 @@ test('validateWorkflow enforces canonical terminal vulnerability field types', (
   }
 });
 
+test('validateWorkflow rejects duplicate output keys before array formats are normalized', () => {
+  const outputFormat = [
+    ...Object.entries(terminalOutput).map(([key, type]) => ({ key, type })),
+    { key: 'confidence', type: 'string' },
+    { key: 'confidence', type: 'number' },
+  ];
+
+  assert.throws(
+    () => validateWorkflow(workflowWithTerminal(outputFormat)),
+    (error) =>
+      error instanceof ValidationError &&
+      error.errors.some(
+        (item) =>
+          item.field === 'levels[0].outputFormat' &&
+          item.message === '"confidence" is used more than once in this output format.'
+      )
+  );
+});
+
 test('validateWorkflow clears individual ancestor keys at a consumesAll boundary', () => {
   const workflow = {
     name: 'batched-workflow',
@@ -492,6 +511,22 @@ test('validatePostScript enforces reserved output conventions', () => {
   );
 });
 
+test('validatePostScript rejects duplicate output keys before array formats are normalized', () => {
+  const outputFormat = JSON.stringify([
+    { key: '_chip_risk', type: 'string' },
+    { key: '_chip_risk', type: 'string' },
+  ]);
+
+  assert.throws(
+    () => validatePostScript({ name: 'duplicate-output', content: 'Analyze {{summary}}.', outputFormat }),
+    (error) =>
+      error instanceof ValidationError &&
+      error.errors.some(
+        (item) => item.field === 'outputFormat' && item.message === '"_chip_risk" is a duplicate output key.'
+      )
+  );
+});
+
 test('workflow and post-script validators reject malformed template references', () => {
   for (const content of [
     'Analyze {{entry-point}}.',
@@ -586,6 +621,44 @@ test('validateScan requires a non-empty severity ranker', () => {
   assert.equal(v.severityRanker, 'A\n\nB');
 });
 
+test('validateScan requires workflow and post-script ids to be positive database ids', () => {
+  const base = {
+    workflowId: '1',
+    postScriptId: '1',
+    repo_kind: 'remote',
+    repo_full: 'https://github.com/org/repo',
+    commit_sha: 'HEAD',
+    model: 'gpt-5.5',
+    harness: 'codex',
+    severity_ranker: 'Rank by impact.',
+  };
+
+  assert.equal(validateScan({ ...base, workflowId: '0002', postScriptId: 3 }).workflowId, '2');
+  assert.equal(validateScan({ ...base, workflowId: '0002', postScriptId: 3 }).postScriptId, '3');
+
+  for (const [field, value] of [
+    ['workflowId', true],
+    ['workflowId', '1.5'],
+    ['workflowId', '-1'],
+    ['workflowId', '0'],
+    ['workflowId', {}],
+    ['workflowId', '9223372036854775808'],
+    ['postScriptId', false],
+    ['postScriptId', '1.5'],
+    ['postScriptId', '-1'],
+    ['postScriptId', '0'],
+    ['postScriptId', {}],
+    ['postScriptId', '9223372036854775808'],
+  ]) {
+    assert.throws(
+      () => validateScan({ ...base, [field]: value }),
+      (error) =>
+        error instanceof ValidationError &&
+        error.errors.some((item) => item.field === field && item.message.includes('must be a positive integer ID'))
+    );
+  }
+});
+
 test('validateScan labels local repository contents as a snapshot, not a Git revision', () => {
   const valid = validateScan(
     {
@@ -622,6 +695,7 @@ test('validateScan enforces model provider and harness compatibility after norma
   assert.equal(validateScan({ ...base, model_provider: 'openrouter', harness: 'claude-code' }).harness, 'claude-code');
   assert.equal(validateScan({ ...base, model_provider: 'xai', harness: 'grok' }).harness, 'grok-build');
   assert.equal(validateScan({ ...base, model_provider: 'xai', harness: 'grok-build' }).modelProvider, 'xai');
+  assert.equal(validateScan({ ...base, model_provider: 'deepseek', harness: 'codex' }).modelProvider, 'deepseek');
   assert.equal(
     validateScan({ ...base, model_provider: 'xai', harness: 'grok-build', thinking_effort: 'xhigh' }).thinkingEffort,
     'xhigh'
@@ -660,6 +734,8 @@ test('validateScan enforces model provider and harness compatibility after norma
     ['openrouter', 'cursor'],
     ['xai', 'codex'],
     ['xai', 'claude-code'],
+    ['deepseek', 'claude-code'],
+    ['deepseek', 'grok-build'],
   ]) {
     assert.throws(
       () => validateScan({ ...base, model_provider, harness }),

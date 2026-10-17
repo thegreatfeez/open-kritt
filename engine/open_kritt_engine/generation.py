@@ -7,11 +7,13 @@ that final persistence step.
 
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .account_activity import filter_account_environment, read_account_activity
 from .codex_auth import preserve_codex_auth_metadata
 from .harnesses import HarnessError, harness_failure_retry_count, harness_for, normalize_harness_name
 from .prompting import append_schema_prompt
@@ -50,7 +52,7 @@ POST_SCRIPT_MARKDOWN_OUTPUT_KEYS = frozenset({"_reserved_report", "_reserved_poc
 POST_SCRIPT_CHIP_PREFIX = "_chip_"
 WORKFLOW_FIELD_TYPES = ("string", "number", "boolean", "array", "object")
 POST_SCRIPT_FIELD_TYPES = WORKFLOW_FIELD_TYPES
-MODEL_PROVIDERS = frozenset({"codex", "claude", "openrouter", "deepseek", "xai"})
+MODEL_PROVIDERS = frozenset({"codex", "claude", "openrouter", "xai", "deepseek"})
 THINKING_EFFORTS = frozenset({"default", "low", "medium", "high", "xhigh", "max", "ultra"})
 GENERATION_REQUEST_MAX_LENGTH = 20_000
 MODEL_ID_MAX_LENGTH = 200
@@ -63,8 +65,8 @@ MODEL_PROVIDER_HARNESSES = {
     "codex": frozenset({"codex"}),
     "claude": frozenset({"claude-code"}),
     "openrouter": frozenset({"codex", "claude-code"}),
-    "deepseek": frozenset({"claude-code"}),
     "xai": frozenset({"grok-build"}),
+    "deepseek": frozenset({"codex"}),
 }
 HARNESS_THINKING_EFFORTS = {
     "codex": frozenset({"default", "low", "medium", "high", "xhigh", "max", "ultra"}),
@@ -104,8 +106,8 @@ GENERATION_PROVIDER_ENV_KEYS = {
     "codex": frozenset({"CODEX_API_KEY", "OPENAI_API_KEY", "CODEX_HOME"}),
     "claude": frozenset({"ANTHROPIC_API_KEY"}),
     "openrouter": frozenset({"OPENROUTER_API_KEY"}),
-    "deepseek": frozenset({"DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL"}),
     "xai": frozenset({"XAI_API_KEY", "GROK_BIN", "GROK_HOME"}),
+    "deepseek": frozenset({"DEEPSEEK_API_KEY"}),
 }
 
 
@@ -260,7 +262,9 @@ def generation_environment(
 ) -> dict[str, str]:
     """Return only the execution settings and credential for the selected provider."""
 
-    source_env = provider_environment() if source is None else source
+    source_env = (
+        provider_environment() if source is None else filter_account_environment(source, read_account_activity(source))
+    )
     allowed = GENERATION_COMMON_ENV_KEYS | GENERATION_PROVIDER_ENV_KEYS.get(provider, frozenset())
     env = {key: value for key in allowed if isinstance((value := source_env.get(key)), str) and value}
     if provider == "codex":
@@ -770,6 +774,10 @@ class GenerationRunner:
         )
 
     def generate(self, job: dict[str, Any]) -> GenerationRunResult:
+        with tempfile.TemporaryDirectory(prefix="account-home-") as empty_home:
+            return self._generate(job, empty_home)
+
+    def _generate(self, job: dict[str, Any], empty_home: str) -> GenerationRunResult:
         request = validate_generation_job(job)
         schema = generation_response_schema(request["kind"])
         prompt = build_generation_prompt(request["kind"], request["request"], schema)
@@ -793,6 +801,10 @@ class GenerationRunner:
             if request["model_provider"] == "xai"
             else None
         )
+        if selected_codex_home == "":
+            selected_codex_home = empty_home
+        if selected_grok_home == "":
+            selected_grok_home = empty_home
         env = generation_environment(
             request["model_provider"],
             codex_home=selected_codex_home,
@@ -807,6 +819,7 @@ class GenerationRunner:
                     request["model_provider"],
                     selected_codex_home or selected_grok_home,
                     data_dir=getattr(self.config, "data_dir", None),
+                    env=env,
                 ):
                     with preserve_codex_auth_metadata(env):
                         result = harness.run(

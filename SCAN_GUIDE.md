@@ -103,28 +103,27 @@ fit for this scan.
 ## 6 · Model & Harness
 
 - **model_provider** — which backend actually serves the model: `codex` (OpenAI/ChatGPT
-  account), `claude` (Anthropic/Claude Code subscription or API key), `openrouter`, or
-  `deepseek` (DeepSeek's own API, driven through the Claude Code harness via DeepSeek's
-  Anthropic-compatible endpoint).
-- **harness** — which CLI tool actually drives the agent: `codex` (Codex CLI) or
-  `claude-code` (Claude Code CLI). **Not every provider supports every harness** — this is
-  hardcoded in the app:
+  account), `claude` (Anthropic/Claude Code subscription or API key), `openrouter`,
+  `xai`, or `deepseek` (DeepSeek's own API, driven through the Codex harness).
+- **harness** — which CLI tool actually drives the agent: `codex` (Codex CLI),
+  `claude-code` (Claude Code CLI), `omp` (oh-my-pi, OpenRouter only), or `grok-build`
+  (xAI). **Not every provider supports every harness** — this is hardcoded in the app:
 
   | Provider | Allowed harness |
   |---|---|
   | `codex` | codex |
   | `claude` | claude-code |
-  | `openrouter` | claude-code, codex |
-  | `deepseek` | claude-code only |
+  | `openrouter` | claude-code, codex, omp |
+  | `xai` | grok-build |
+  | `deepseek` | codex only |
 
-  `deepseek` has no Codex-side wiring at all — every DeepSeek scan/depth must use the
-  `claude-code` harness. The engine points Claude Code's `ANTHROPIC_BASE_URL`/
-  `ANTHROPIC_AUTH_TOKEN` at your `DEEPSEEK_BASE_URL`/`DEEPSEEK_API_KEY` under the hood.
+  `deepseek` is wired through the Codex harness only. The engine injects a fixed,
+  non-secret Codex provider definition for DeepSeek's Responses-compatible endpoint and
+  uses `DEEPSEEK_API_KEY` for authentication.
 - **model** — the exact model ID. For providers with a live catalog it's a dropdown; for
-  `openrouter`/`deepseek` it's free text since those are custom/aggregated endpoints, but
-  `deepseek` does have a couple of pre-seeded suggestions (`deepseek-v4-pro[1m]`,
-  `deepseek-v4-flash`) so you don't have to remember exact IDs. Anything else still needs
-  to be typed exactly.
+  `openrouter` it's free text since it's a custom/aggregated endpoint. `deepseek` has an
+  authenticated live catalog (default `deepseek-flash`, with `deepseek-v4-pro` also
+  documented), so pick from the discovered list rather than typing an ID.
 - **thinking_effort** — reasoning depth for the main workflow (`default`, `low`, `medium`,
   `high`, `xhigh`, `max`, `ultra`, subject to what the chosen model actually supports).
   Higher = more thorough but slower and more expensive per call.
@@ -218,12 +217,11 @@ configure there today.
 
 ## Practical notes learned the hard way (this setup, as of now)
 
-- **DeepSeek is driven entirely through the Claude Code harness**, using a single
-  `DEEPSEEK_API_KEY` and an optional `DEEPSEEK_BASE_URL` (defaults to
-  `https://api.deepseek.com/anthropic` when left blank). Claude Code's SDK talks to it via
-  `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` under the hood — the engine wires that up
-  automatically, you don't need to think about it, just pick `deepseek` as the provider and
-  `claude-code` as the harness (see Model & Harness above).
+- **DeepSeek is driven entirely through the Codex harness**, using `DEEPSEEK_API_KEY`.
+  The engine adds a fixed Codex provider definition for DeepSeek and disables Codex's
+  built-in web search for these jobs. Load the authenticated model list from Accounts or
+  the scan form, then choose `deepseek-flash` or another discovered model; no base URL is
+  needed.
 - Before committing to a big/expensive scan on a new setup, set **maximum model jobs to
   `1`** first — it's the cheapest possible way to prove the model provider and workflow are
   actually wired correctly before spending real time/tokens on a full run.

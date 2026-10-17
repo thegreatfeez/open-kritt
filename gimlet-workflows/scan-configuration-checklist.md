@@ -15,9 +15,9 @@
 
 **Updated 2026-08-30**: one provider is configured and usable in this setup.
 
-- **DeepSeek** (`DEEPSEEK_API_KEY` + `DEEPSEEK_BASE_URL`, defaulting to
-  `https://api.deepseek.com/anthropic`, driven through `claude-code`) - no known
-  reliability issues. Two reasoning tiers. No Codex-side path.
+- **DeepSeek** (`DEEPSEEK_API_KEY`, driven through the `codex` harness) - no known
+  reliability issues. Authenticated live model catalog with `deepseek-flash` as the
+  default and `deepseek-v4-pro` for deeper work. No base URL is needed.
 
 ## Step 0 · Gather this first (not a form field)
 
@@ -127,16 +127,16 @@ filled.
 
 ## Step 6 · MODEL & HARNESS
 
-Turn on **Customize by depth**. `harness: claude-code` for EVERY depth.
+Turn on **Customize by depth**. `harness: codex` for EVERY depth.
 
 ### DeepSeek-only configuration
 
 | Depth | Task | Model | Effort |
 |---|---|---|---|
-| 0 (tooling) | Runs Slither/Aderyn/Foundry, summarizes | `deepseek-v4-flash` - mechanical, reasoning tier doesn't matter | `low`/`medium` |
-| 1 (recon) | Enumerates + classifies candidates | `deepseek-v4-pro[1m]` | `high` |
-| 2 (deep investigation) | Where bugs get found | `deepseek-v4-pro[1m]` | `high` or `xhigh` |
-| 3 (verify) | Gates + real PoC execution | `deepseek-v4-pro[1m]` - the `claude-code` harness is what actually drives PoC execution | `high` |
+| 0 (tooling) | Runs Slither/Aderyn/Foundry, summarizes | `deepseek-flash` - mechanical, reasoning tier doesn't matter | `low` |
+| 1 (recon) | Enumerates + classifies candidates | `deepseek-v4-pro` | `high` |
+| 2 (deep investigation) | Where bugs get found | `deepseek-v4-pro` | `high` |
+| 3 (verify) | Gates + real PoC execution | `deepseek-v4-pro` - the `codex` harness is what actually drives PoC execution | `high`/`max` |
 
 **Single vendor, no cross-vendor diversity** - each depth varies reasoning TIER/effort, not vendor. This reintroduces some of the attention-saturation risk the old 3-vendor rotation was designed to counter.
 

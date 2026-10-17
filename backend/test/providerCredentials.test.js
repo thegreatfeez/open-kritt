@@ -12,7 +12,6 @@ import {
   readManagedCredentialsSync,
   removeManagedProviderCredential,
   saveManagedProviderCredential,
-  validateProviderBaseUrl,
   validateProviderCredential,
 } from '../src/lib/providerCredentials.js';
 
@@ -93,7 +92,6 @@ test('removing an environment-bootstrapped key keeps it removed until explicitly
   assert.deepEqual(readManagedCredentialStateSync(credentialsPath), {
     version: 1,
     credentials: {},
-    baseUrls: {},
     disabledEnvironmentProviders: ['openrouter'],
   });
 
@@ -106,35 +104,12 @@ test('removing an environment-bootstrapped key keeps it removed until explicitly
 
 test('credential validation accepts only a single-line API key for managed providers', () => {
   assert.equal(validateProviderCredential('openrouter', 'valid-key'), null);
-  assert.equal(validateProviderCredential('deepseek', 'valid-key'), null);
   assert.equal(validateProviderCredential('xai', 'valid-key'), null);
   assert.equal(validateProviderCredential('other', 'key').field, 'provider');
   assert.equal(validateProviderCredential('claude', 'key').field, 'provider');
   assert.equal(validateProviderCredential('openrouter', ' ').field, 'credential');
   assert.equal(validateProviderCredential('openrouter', 'one\ntwo').field, 'credential');
   assert.equal(validateProviderCredential('xai', 'one\ntwo').field, 'credential');
-});
-
-test('DeepSeek credentials persist a validated base URL without exposing secrets', async (t) => {
-  const credentialsPath = await temporaryCredentialPath(t);
-  const environmentFilePath = join(dirname(credentialsPath), '.env');
-  await writeFile(environmentFilePath, 'DEEPSEEK_API_KEY=\nDEEPSEEK_BASE_URL=\n');
-
-  await saveManagedProviderCredential('deepseek', 'deepseek-secret', {
-    credentialsPath,
-    environmentFilePath,
-    baseUrl: 'https://api.deepseek.com/anthropic',
-  });
-
-  const state = readManagedCredentialStateSync(credentialsPath);
-  assert.equal(state.credentials.deepseek, 'deepseek-secret');
-  assert.equal(state.baseUrls.deepseek, 'https://api.deepseek.com/anthropic');
-  const status = providerCredentialStatuses({ env: {}, credentialsPath }).find(({ id }) => id === 'deepseek');
-  assert.equal(status.configured, true);
-  assert.equal(JSON.stringify(status).includes('deepseek-secret'), false);
-  assert.equal(validateProviderBaseUrl('deepseek', 'ftp://api.deepseek.com/anthropic').field, 'baseUrl');
-  assert.equal(validateProviderBaseUrl('deepseek', 'https://api.deepseek.com/anthropic'), null);
-  assert.equal(validateProviderBaseUrl('deepseek', ''), null);
 });
 
 test('provider status recognizes Codex and Claude login homes', async (t) => {
@@ -253,6 +228,7 @@ test('account overview merges executor detail without exposing unrecognized fiel
         accounts: [
           {
             id: 'openrouter-key',
+            path: 'OPENROUTER_API_KEY',
             label: 'OpenRouter key',
             active: true,
             canRemove: true,
