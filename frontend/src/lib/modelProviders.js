@@ -7,7 +7,9 @@ const PROVIDER_HARNESSES = {
   claude: ['claude-code'],
   // Claude Code has first-class OpenRouter support. Codex remains available
   // for advanced installations with a matching Codex provider configuration.
-  openrouter: ['claude-code', 'codex'],
+  // omp (oh-my-pi, omp.sh) is the only harness for OpenRouter-exclusive
+  // "stealth" models (e.g. stealth/ox-alpha) not aliased into the others.
+  openrouter: ['claude-code', 'codex', 'omp'],
   xai: ['grok-build'],
   deepseek: ['codex'],
 };
@@ -31,6 +33,7 @@ const PROVIDER_THINKING_EFFORTS = {
 const HARNESS_THINKING_EFFORTS = {
   codex: ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'claude-code': ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  omp: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
   'grok-build': ['low', 'medium', 'high', 'xhigh'],
 };
 

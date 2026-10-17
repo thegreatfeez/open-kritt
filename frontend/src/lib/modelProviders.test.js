@@ -299,8 +299,8 @@ describe('model provider harnesses', () => {
     expect(defaultHarnessForModelProvider('claude')).toBe('claude-code');
   });
 
-  it('defaults OpenRouter to Claude Code and retains Codex as an advanced option', () => {
-    expect(harnessesForModelProvider('openrouter')).toEqual(['claude-code', 'codex']);
+  it('defaults OpenRouter to Claude Code and retains Codex and omp as advanced options', () => {
+    expect(harnessesForModelProvider('openrouter')).toEqual(['claude-code', 'codex', 'omp']);
     expect(defaultHarnessForModelProvider('openrouter')).toBe('claude-code');
   });
 

@@ -74,23 +74,32 @@ export const DEFAULT_THINKING_EFFORT = 'medium';
 export const MODEL_PROVIDERS = ['codex', 'claude', 'openrouter', 'xai', 'deepseek'];
 export const DEFAULT_MODEL_PROVIDER = 'openrouter';
 
-export const HARNESSES = ['codex', 'claude-code', 'cursor', 'grok-build'];
+export const HARNESSES = ['codex', 'claude-code', 'cursor', 'omp', 'grok-build'];
 export const HARNESS_ALIASES = {
   'codex-cli': 'codex',
   'cursor-agent': 'cursor',
   'cursor-cli': 'cursor',
+  'oh-my-pi': 'omp',
+  'omp-cli': 'omp',
   grok: 'grok-build',
 };
 export const MODEL_PROVIDER_HARNESSES = {
   codex: ['codex'],
   claude: ['claude-code'],
-  openrouter: ['codex', 'claude-code'],
+  // omp (oh-my-pi, omp.sh) has first-class OpenRouter support and is the only
+  // harness for OpenRouter-exclusive "stealth" models (e.g. stealth/ox-alpha)
+  // that aren't aliased into codex/claude-code's own model catalogs.
+  openrouter: ['codex', 'claude-code', 'omp'],
   xai: ['grok-build'],
   deepseek: ['codex'],
 };
 export const HARNESS_THINKING_EFFORTS = {
   codex: ['default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
   'claude-code': ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
+  // omp's --thinking flag also accepts off/minimal/auto, but those aren't in
+  // open-kritt's shared THINKING_EFFORTS union - stick to values the rest of
+  // the pipeline already understands.
+  omp: ['default', 'low', 'medium', 'high', 'xhigh', 'max'],
   'grok-build': ['low', 'medium', 'high', 'xhigh'],
 };
 

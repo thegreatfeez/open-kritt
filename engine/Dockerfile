@@ -7,16 +7,36 @@ FROM python:3.12.14-slim-bookworm
 WORKDIR /app
 
 # Copy the Node runtime as a tree so the npm/npx symlinks retain their targets.
+# /opt/yarn-* must come along too: /usr/local/bin/yarn is a symlink into /opt in
+# the upstream node image, and copying only /usr/local/ leaves it dangling.
 COPY --from=node_runtime /usr/local/ /usr/local/
+COPY --from=node_runtime /opt/ /opt/
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates curl git util-linux \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl git util-linux gcc libc6-dev pkg-config libssl-dev \
     && npm install --global --no-audit --no-fund npm@12.0.1 \
     && npm install --global --no-audit --no-fund @openai/codex@0.145.0 \
     && codex --version \
     && npm install --global --no-audit --no-fund --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@2.1.215 \
+    && npm install --global --no-audit --no-fund @oh-my-pi/pi-coding-agent@18.0.4 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Rust toolchain + Aderyn (Solidity static analyzer) and Foundry (forge/cast/anvil),
+# plus Solana toolchain (solana CLI, Anchor, cargo-build-sbf) and cargo-audit,
+# baked into the image so tool-enabled scans don't depend on installing them
+# fresh inside each disposable per-job container.
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH="/opt/cargo/bin:/root/.foundry/bin:/root/.local/share/solana/install/active_release/bin:${PATH}"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
+    && cargo install aderyn \
+    && cargo install anchor-cli --locked \
+    && cargo install cargo-audit \
+    && rm -rf /opt/cargo/registry \
+    && curl -L https://foundry.paradigm.xyz | bash \
+    && /root/.foundry/bin/foundryup \
+    && sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.5/install)"
 
 # Keep sensitive bind mounts below one root-only traversal boundary. The legacy
 # paths remain root-visible symlinks for runtime config and existing installs.

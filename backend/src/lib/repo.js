@@ -408,6 +408,18 @@ export function knownError(value) {
       fixLinks: [{ label: 'View usage and limits in Accounts', url: '/accounts', internal: true }],
     };
   }
+  if (lower.includes('diagnostic: quota_exceeded')) {
+    const insufficientBalance = lower.includes('402') && lower.includes('insufficient balance');
+    return {
+      key: insufficientBalance ? 'provider_insufficient_balance' : 'quota_exceeded',
+      title: insufficientBalance ? 'Insufficient balance' : 'Provider quota exhausted',
+      message: insufficientBalance
+        ? 'The model provider account has insufficient balance (HTTP 402). Add funds to the provider account, then resume the scan.'
+        : 'The provider reports that the account quota is exhausted. Check the provider account, then resume the scan.',
+      preserveMessage: true,
+      fixLinks: [{ label: 'Open Accounts', url: '/accounts', internal: true }],
+    };
+  }
   if (lower.includes('diagnostic: network_error') || lower.includes('dns lookup failed')) {
     return {
       key: 'provider_network_error',

@@ -375,7 +375,23 @@ def _prepare_docker_sandbox(cmd: list[str]):
     if not network or not network.startswith(SCAN_SANDBOX_NETWORK_PREFIX):
         raise HarnessError("Scan runner must use a dedicated per-job Docker network.", code="configuration_error")
     create = _docker_control_run(
-        [cmd[0], "network", "create", "--label", "open-kritt.scan-sandbox=1", network],
+        [
+            cmd[0],
+            "network",
+            "create",
+            "--label",
+            "open-kritt.scan-sandbox=1",
+            # Docker Desktop's default bridge MTU (65535) doesn't match the
+            # host's real physical interface MTU (typically 1500). Job
+            # containers inherit the default unless told otherwise, and large
+            # HTTPS downloads (npm/yarn tarballs, solc compiler binaries) get
+            # corrupted in transit - openssl reports "decryption failed or
+            # bad record mac". Pin the per-job network to 1500 to match the
+            # host path and avoid that class of failure.
+            "--opt",
+            "com.docker.network.driver.mtu=1500",
+            network,
+        ],
     )
     if create.returncode == 0:
         return
@@ -590,6 +606,16 @@ def _classify_harness_output(output: str, *, provider: str | None = None) -> str
         return "subagent_limited"
     if account_limit_signal:
         return "account_quota_limited"
+    # DeepSeek (and providers with similar wording) return HTTP 402 with an
+    # unambiguous "no funds" message rather than the vaguer "quota"/"credits"
+    # phrasing below - route it straight to quota_exceeded (non-retryable) and
+    # skip the openrouter/deepseek quota->rate_limited downgrade further down,
+    # since a real empty balance is never a transient rate limit.
+    insufficient_balance_signal = _has_http_status(normalized, 402) or any(
+        value in normalized for value in ("insufficient balance", "insufficient_balance")
+    )
+    if insufficient_balance_signal:
+        return "quota_exceeded"
     rate_limit_signal = any(
         value in normalized
         for value in (
@@ -613,7 +639,11 @@ def _classify_harness_output(output: str, *, provider: str | None = None) -> str
             "quota temporarily exceeded",
         )
     )
-    if rate_limit_signal or _has_http_status(normalized, 429) or (provider == "openrouter" and quota_signal):
+    if (
+        rate_limit_signal
+        or _has_http_status(normalized, 429)
+        or (provider in {"openrouter", "deepseek"} and quota_signal)
+    ):
         return "rate_limited"
     if quota_signal:
         return "quota_exceeded"
@@ -695,6 +725,13 @@ def _safe_harness_public_message(output: str, code: str) -> str:
         return (
             "The model provider hostname could not be resolved (DNS lookup failed). "
             "Check the engine's network and DNS connectivity, then resume the scan."
+        )
+    if code == "quota_exceeded" and (
+        "402" in normalized and any(value in normalized for value in ("insufficient balance", "insufficient_balance"))
+    ):
+        return (
+            "The model provider account has insufficient balance (HTTP 402). "
+            "Add funds to the provider account, then resume the scan."
         )
     return HARNESS_FAILURE_MESSAGES.get(code, HARNESS_FAILURE_MESSAGES["model_process_error"])
 
@@ -981,6 +1018,7 @@ def _scan_docker_command(
         "CODEX_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
+        "DEEPSEEK_API_KEY",
         "XAI_API_KEY",
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_AUTH_TOKEN",
@@ -991,6 +1029,7 @@ def _scan_docker_command(
         "CURSOR_API_KEY",
         "CURSOR_AUTH_TOKEN",
         "CURSOR_AGENT_BIN",
+        "OMP_BIN",
         "GROK_BIN",
         "SSL_CERT_FILE",
         "SSL_CERT_DIR",
@@ -2213,6 +2252,151 @@ class CursorHarness:
         return HarnessResult(payload=payload, usage=usage, output=process_output)
 
 
+def _omp_executable(env: dict[str, str]) -> str:
+    configured = env.get("OMP_BIN") or os.getenv("OMP_BIN")
+    if configured:
+        return configured
+    found = shutil.which("omp", path=env.get("PATH"))
+    if found:
+        return found
+    local_omp = Path(env.get("HOME") or str(Path.home())) / ".local/bin/omp"
+    if local_omp.exists():
+        return str(local_omp)
+    raise HarnessError("omp CLI is not available; install it with `curl -fsSL https://omp.sh/install | sh`")
+
+
+# omp's --thinking flag accepts off/minimal/low/medium/high/xhigh/max/auto, but
+# open-kritt's shared THINKING_EFFORTS union only goes as far as this subset -
+# stick to values the rest of the pipeline already understands.
+OMP_THINKING_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+
+
+def _extract_json_from_omp_json(stdout: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Parse omp's `--mode json` NDJSON event stream.
+
+    Each line is one event; the final assistant `message_end` carries the
+    complete text content and per-turn usage/cost, mirroring how
+    `_extract_json_from_claude_stream` reads Claude's stream-json events.
+    """
+    candidates: list[str] = []
+    usage: dict[str, Any] | None = None
+    stream_error: str | None = None
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "message_end":
+            continue
+        message = event.get("message")
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        content = message.get("content") or []
+        text = "".join(
+            block.get("text") or "" for block in content if isinstance(block, dict) and block.get("type") == "text"
+        )
+        if text:
+            candidates.append(text)
+        message_usage = message.get("usage")
+        if isinstance(message_usage, dict):
+            usage = message_usage
+        if message.get("stopReason") == "error":
+            stream_error = message.get("errorMessage") or json.dumps(
+                {
+                    key: message.get(key)
+                    for key in ("errorStatus", "errorId", "errorMessage")
+                    if message.get(key) is not None
+                }
+            )
+
+    last_error: Exception | None = None
+    for candidate in reversed(candidates):
+        try:
+            return _parse_json_text(candidate), usage
+        except json.JSONDecodeError as exc:
+            last_error = exc
+    if stream_error:
+        raise _classified_harness_error(stream_error, harness="omp")
+    raise HarnessError(
+        "omp did not return a usable structured response.",
+        code="invalid_output",
+        harness="omp",
+    ) from last_error
+
+
+class OmpHarness:
+    name = "omp"
+
+    def __init__(self, timeout_seconds: int, model_provider: str | None = None):
+        self.timeout_seconds = timeout_seconds
+        self.model_provider = model_provider
+
+    def run(
+        self,
+        *,
+        prompt: str,
+        schema: dict[str, Any],
+        repo_dir: str,
+        model: str,
+        thinking_effort: str | None = None,
+        env: dict[str, str] | None = None,
+        allow_tools: bool = True,
+        runner_image: str | None = None,
+    ) -> HarnessResult:
+        if not allow_tools:
+            raise HarnessError(
+                "omp does not support isolated tool-free generation.",
+                code="configuration_error",
+                harness="omp",
+            )
+        actual_env = env or _base_env()
+        executable = _omp_executable(actual_env)
+        model_name = model
+        if normalize_model_provider(self.model_provider) == "openrouter":
+            model_name = OPENROUTER_MODEL_ALIASES.get(model, model)
+        cmd = [
+            executable,
+            "-p",
+            "--mode",
+            "json",
+            "--model",
+            model_name,
+            "--cwd",
+            repo_dir,
+            "--no-session",
+            "--approval-mode",
+            "yolo",
+        ]
+        if thinking_effort and thinking_effort in OMP_THINKING_EFFORTS:
+            cmd.extend(["--thinking", thinking_effort])
+        cmd = (
+            _scan_docker_command(cmd, repo_dir, actual_env, runner_image=runner_image)
+            if runner_image
+            else _scan_docker_command(cmd, repo_dir, actual_env)
+        )
+        proc = _run_process(cmd, prompt, repo_dir, self.timeout_seconds, env=actual_env)
+        process_output = _process_output(proc)
+        try:
+            payload, usage = _extract_json_from_omp_json(proc.stdout)
+        except (HarnessError, json.JSONDecodeError) as exc:
+            raise HarnessError(
+                "omp did not return a usable structured response.",
+                output=process_output,
+                code="invalid_output",
+                harness="omp",
+            ) from exc
+        if usage is None and thinking_effort:
+            usage = {"thinking_effort": thinking_effort}
+        elif usage is not None and thinking_effort:
+            usage = {**usage, "thinking_effort": thinking_effort}
+        if normalize_model_provider(self.model_provider) == "openrouter":
+            provider_info = {"model_provider": "openrouter", "openrouter_model": model_name}
+            usage = {**provider_info, **(usage or {})}
+        return HarnessResult(payload=payload, usage=usage, output=process_output)
+
+
 def _grok_executable(env: dict[str, str]) -> str:
     configured = env.get("GROK_BIN") or os.getenv("GROK_BIN")
     if configured:
@@ -2399,6 +2583,8 @@ def normalize_harness_name(name: str) -> str:
         return "codex"
     if name in {"cursor-cli", "cursor-agent"}:
         return "cursor"
+    if name in {"oh-my-pi", "omp-cli"}:
+        return "omp"
     if name == "grok":
         return "grok-build"
     return name
@@ -2443,6 +2629,8 @@ def harness_for(
             runner_memory_mb=runner_memory_mb,
             runner_memory_reservation_mb=runner_memory_reservation_mb,
         )
+    if normalized == "omp":
+        return OmpHarness(timeout_seconds, provider)
     if normalized == "grok-build":
         return GrokBuildHarness(
             timeout_seconds,

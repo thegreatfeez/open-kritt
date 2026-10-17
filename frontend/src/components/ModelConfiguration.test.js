@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { configuredModelCatalog } from '../lib/modelProviders.js';
 import ModelConfiguration, { modelConfigurationForCatalog, modelConfigurationIsValid } from './ModelConfiguration.jsx';
 
-const providers = ['codex', 'claude', 'openrouter'];
+const providers = ['codex', 'claude', 'openrouter', 'deepseek'];
 const catalog = configuredModelCatalog({
   providers: [
     {

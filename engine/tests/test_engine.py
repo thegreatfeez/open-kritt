@@ -1786,6 +1786,11 @@ def test_harness_process_errors_do_not_echo_command_or_provider_output(monkeypat
         ('{"error":{"code":"insufficient_quota"}}', "quota_exceeded", False),
         ('{"api_error_status":400,"result":"Credit balance is too low"}', "quota_exceeded", False),
         (
+            '{"type":"result","is_error":true,"api_error_status":402,"result":"API Error: 402 Insufficient Balance"}',
+            "quota_exceeded",
+            False,
+        ),
+        (
             "Error: --json-schema is not a valid JSON Schema: no schema with key or ref "
             '"https://json-schema.org/draft/2020-12/schema"',
             "invalid_output_schema",

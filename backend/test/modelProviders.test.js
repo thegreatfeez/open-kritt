@@ -49,10 +49,11 @@ test('configuredModelProviders returns canonical providers configured by presenc
       OPEN_KRITT_ANTHROPIC_API_KEY_CONFIGURED: '1',
       OPEN_KRITT_DEEPSEEK_API_KEY_CONFIGURED: '1',
       OPEN_KRITT_OPENROUTER_API_KEY_CONFIGURED: '1',
+      OPEN_KRITT_XAI_API_KEY_CONFIGURED: '1',
     },
   });
 
-  assert.deepEqual(providers, ['codex', 'claude', 'openrouter', 'deepseek']);
+  assert.deepEqual(providers, ['codex', 'claude', 'openrouter', 'xai', 'deepseek']);
 });
 
 test('configuredModelProviders does not mistake a stale Codex login marker for credentials', () => {

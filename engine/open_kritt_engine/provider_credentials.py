@@ -46,6 +46,7 @@ JOB_PROVIDER_ENV_KEYS = {
 }
 JOB_HARNESS_ENV_KEYS = {
     "cursor": frozenset({"CURSOR_API_KEY", "CURSOR_AUTH_TOKEN", "CURSOR_AGENT_BIN"}),
+    "omp": frozenset({"OMP_BIN"}),
     "grok-build": frozenset({"GROK_BIN", "GROK_HOME"}),
 }
 
